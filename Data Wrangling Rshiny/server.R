@@ -288,8 +288,8 @@ server <- function(input, output, session) {
   output$export_joined_data <- downloadHandler(
     filename = function() {
       # naming the file if Labguru is inported take "Plate_##" file name
-      plate_num <- if (!is.null(input$labguru_file)) {
-        tolower(gsub(".*(plate_\\d+).*", "\\1", input$labguru_file$name))
+      plate_num <- if (!is.null(input$labguru_file)) { 
+        tolower(str_extract(basename(input$labguru_file$name), "(?i)^plate_(\\d+)")) 
       } else {
         "tecan"
       }

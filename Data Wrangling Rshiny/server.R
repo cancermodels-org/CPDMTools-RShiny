@@ -246,8 +246,14 @@ server <- function(input, output, session) {
       control_var <- if (input$control_location == "Treatment Name") "treatment_name" else "well_annotation"
       unique_values <- unique(data[[control_var]])
       choices <- c("None", unique_values)
+
+      # default selection for media control
+      default_media_control <- if (any(grepl("Media", unique_values, ignore.case = TRUE))) {
+      "Media Only"
+      } else {"None"}
+
       
-      updateSelectInput(session, "media_control", choices = choices, selected = ifelse(any(grepl("Media", unique_values)), "Media", "None"))
+      updateSelectInput(session, "media_control", choices = choices, selected = default_media_control)
       updateSelectInput(session, "negative_control", choices = choices, selected = ifelse(any(grepl("DMSO 0.5%", unique_values)), "DMSO 0.5%", "None"))
       updateSelectInput(session, "positive_control", choices = choices, selected = ifelse(any(grepl("DMSO 10%", unique_values)), "DMSO 10%", "None"))
     }

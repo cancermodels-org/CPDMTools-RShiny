@@ -222,47 +222,48 @@ server <- function(input, output, session) {
   ## 5 join table 
   joined_data <- reactiveVal(NULL)
   
-  # Observe file inputs, if plate_data() or tecan_data() is available AND growth_data() or ctg_data() 
-  observe({
-    enable_join_button <- (!is.null(plate_data()) || !is.null(tecan_data())) && (!is.null(growth_data()) || !is.null(ctg_data()))
-    shinyjs::toggleState("join_datasets", condition = enable_join_button)
-  })
-  
-  observeEvent(input$join_datasets, {
-    print("Joining datasets...")
-    joined_data(plate_data_join(
-      labguru_plate_data_frame = if (!is.null(plate_data())) plate_data() else NULL,
-      tecan_plate_data_frame = if (!is.null(tecan_data())) tecan_data() else NULL,
-      growth_data_frame = if (!is.null(growth_data())) growth_data() else NULL,
-      ctg_data_frame = if (!is.null(ctg_data())) ctg_data() else NULL
-    ))
-    # dropdowns based on joined data
-    update_control_dropdowns()
-  })
-  
-  update_control_dropdowns <- function() {
+    update_control_dropdowns <- function() {
     data <- joined_data()
     if (!is.null(data)) {
       control_var <- if (input$control_location == "Treatment Name") "treatment_name" else "well_annotation"
       unique_values <- unique(data[[control_var]])
       choices <- c("None", unique_values)
-
-      # default selection for media control
+      
+      # Default selection for media control
       default_media_control <- if (any(grepl("Media", unique_values, ignore.case = TRUE))) {
-      "Media Only"
-      } else {"None"}
-
+        "Media Only"
+      } else {
+        "None"
+      }
       
       updateSelectInput(session, "media_control", choices = choices, selected = default_media_control)
       updateSelectInput(session, "negative_control", choices = choices, selected = ifelse(any(grepl("DMSO 0.5%", unique_values)), "DMSO 0.5%", "None"))
       updateSelectInput(session, "positive_control", choices = choices, selected = ifelse(any(grepl("DMSO 10%", unique_values)), "DMSO 10%", "None"))
     }
   }
+  # Observe changes in control_location to update dropdowns
+  observeEvent(input$control_location, {
+    update_control_dropdowns()
+  })
+
+  observeEvent(input$join_datasets, {
+    #print("Joining datasets...")
+    #join datasets
+    joined_data(plate_data_join(
+      labguru_plate_data_frame = if (!is.null(plate_data())) plate_data() else NULL,
+      tecan_plate_data_frame = if (!is.null(tecan_data())) tecan_data() else NULL,
+      growth_data_frame = if (!is.null(growth_data())) growth_data() else NULL,
+      ctg_data_frame = if (!is.null(ctg_data())) ctg_data() else NULL
+    ))
+    update_control_dropdowns()
+  })
   
   output$joined_data_table <- renderDT({
     req(joined_data())
     datatable(joined_data(), options = list(scrollX = TRUE))
   })
+
+
   
   observeEvent(input$update_controls, {
     data <- joined_data()

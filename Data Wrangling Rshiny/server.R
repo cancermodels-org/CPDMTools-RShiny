@@ -266,24 +266,35 @@ server <- function(input, output, session) {
   
   observeEvent(input$update_controls, {
     data <- joined_data()
+    
     if (!is.null(data)) {
       control_var <- if (input$control_location == "Treatment Name") "treatment_name" else "well_annotation"
+
       if (control_var %in% names(data)) {
+        #treatment_type based on selected controls
         data$treatment_type <- ifelse(data[[control_var]] == input$media_control, "Media Control",
                                       ifelse(data[[control_var]] == input$negative_control, "Negative Control",
-                                             ifelse(data[[control_var]] == input$positive_control, "Positive Control",
-                                                    ifelse(input$tecan_data == "Yes", "Monotherapy", "Combination Therapy"))))
+                                             ifelse(data[[control_var]] == input$positive_control, "Monotherapy", data$treatment_type)))
         
-        # Filter for max concentration if selected. for positive control
+        #update treatment_type for max concentration if selected
         if (input$positive_control_concentration == "Yes") {
-          max_concentration <- data %>%
-            filter(treatment_type == "Positive Control") %>%
+          #geting maximum concentration for the selected positive control
+          max_concentration_data <- data %>%
+            filter(data[[control_var]] == input$positive_control) %>%
             group_by(!!sym(control_var)) %>%
             summarize(max_concentration = max(concentration, na.rm = TRUE)) %>%
-            pull(max_concentration)
+            ungroup()
           
+          #treatment_type with highest concentration to positive control
           data <- data %>%
-            filter(!(treatment_type == "Positive Control") | (concentration %in% max_concentration))
+            left_join(max_concentration_data, by = control_var) %>%
+            mutate(treatment_type = ifelse(data[[control_var]] == input$positive_control & concentration == max_concentration, 
+                                           "Positive Control", treatment_type)) %>%
+            select(-max_concentration)
+        } else {
+          # If "No" is selected, treatment with any concentrations will mark as positive control
+          data <- data %>%
+            mutate(treatment_type = ifelse(data[[control_var]] == input$positive_control, "Positive Control", treatment_type))
         }
         
         joined_data(data)

@@ -195,8 +195,10 @@ ui <- navbarPage(
                   selectInput("media_control", "Please Select the Media Control", choices = NULL),
                   selectInput("negative_control", "Please Select the Negative Control", choices = NULL),
                   selectInput("positive_control", "Please Select the Positive Control", choices = NULL),
-                  radioButtons("positive_control_concentration", "Show Max Positive Control Concentration", choiceValues=list("No","Yes"),
-                               choiceNames=list("No","Yes"), selected ="No", inline=T),
+                  radioButtons("positive_control_concentration", "Mark Highest Concentration as Positive Control", 
+                               choiceValues=list("No","Yes"),
+                               choiceNames=list("No","Yes"), 
+                               selected ="Yes", inline=TRUE),  
                   actionButton("update_controls", "Update Controls")
                 )
               ),

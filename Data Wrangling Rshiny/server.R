@@ -245,7 +245,7 @@ server <- function(input, output, session) {
   observeEvent(input$control_location, {
     update_control_dropdowns()
   })
-
+  
   observeEvent(input$join_datasets, {
     #print("Joining datasets...")
     #join datasets
@@ -257,93 +257,104 @@ server <- function(input, output, session) {
     ))
     update_control_dropdowns()
   })
+  ##### transfer button
+    output$showTransferButton <- reactive({
+      data <- joined_data()
+      !is.null(data) && any(grepl("-", data$well_annotation))
+    })
+  outputOptions(output, "showTransferButton", suspendWhenHidden = FALSE)
   
-  output$joined_data_table <- renderDT({
-    req(joined_data())
-    datatable(joined_data(), options = list(scrollX = TRUE))
-  })
-
-
-  
-  observeEvent(input$update_controls, {
-    data <- joined_data()
-    
-    if (!is.null(data)) {
-      control_var <- if (input$control_location == "Treatment Name") "treatment_name" else "well_annotation"
-
-      if (control_var %in% names(data)) {
-        #treatment_type based on selected controls
-        data$treatment_type <- ifelse(data[[control_var]] == input$media_control, "Media Control",
-                                      ifelse(data[[control_var]] == input$negative_control, "Negative Control",
-                                             ifelse(data[[control_var]] == input$positive_control, "Monotherapy", data$treatment_type)))
-        
-        #update treatment_type for max concentration if selected
-        if (input$positive_control_concentration == "Yes") {
-          #geting maximum concentration for the selected positive control
-          max_concentration_data <- data %>%
-            filter(data[[control_var]] == input$positive_control) %>%
-            group_by(!!sym(control_var)) %>%
-            summarize(max_concentration = max(concentration, na.rm = TRUE)) %>%
-            ungroup()
-          
-          #treatment_type with highest concentration to positive control
-          data <- data %>%
-            left_join(max_concentration_data, by = control_var) %>%
-            mutate(treatment_type = ifelse(data[[control_var]] == input$positive_control & concentration == max_concentration, 
-                                           "Positive Control", treatment_type)) %>%
-            select(-max_concentration)
-        } else {
-          # If "No" is selected, treatment with any concentrations will mark as positive control
-          data <- data %>%
-            mutate(treatment_type = ifelse(data[[control_var]] == input$positive_control, "Positive Control", treatment_type))
-        }
-        
+  #well_annotate_transfer function
+    observeEvent(input$transfer_annotations, {
+      data <- joined_data()
+      if (!is.null(data)) {
+        data <- well_annotate_transfer(data)
         joined_data(data)
       }
-    }
-  })
+    })
+    output$joined_data_table <- renderDT({
+      req(joined_data())
+      datatable(joined_data(), options = list(scrollX = TRUE))
+    })
   
-  output$export_joined_data <- downloadHandler(
-    filename = function() {
-      # naming the file if Labguru is inported take "Plate_##" file name
-      plate_num <- if (!is.null(input$labguru_file)) { 
-        tolower(str_extract(basename(input$labguru_file$name), "(?i)^plate_(\\d+)")) 
-      } else {
-        "tecan"
-      }
-      labguru_name <- if (input$filter_type == "Labguru Model Name") { #labguru_name
-        tolower(input$model_name)
-      } else {
-        "custom_labguru_name"
-      }
-      #data type
-      data_type <- if (input$data_file_type == "Imaging") "growth" else "ctg"
-      drugging_suffix <- if (input$drugging_type == "Synergy") "_syn" else "" # if tecal is Synergy, "_syn" suffix
-      #filename based on the conditions
-      if (!is.null(plate_data())) {
-        if (input$tecan_data == "Yes") { # if Labguru Plate Map is present
-          paste0(plate_num, "_", labguru_name, "_", data_type, drugging_suffix, "_joined.xlsx")
-        } else {
-          paste0(plate_num, "_", labguru_name, "_", data_type, "_joined.xlsx")
-        }
-      } else { # No Labguru Plate Map
-        paste0("tecan_", data_type, drugging_suffix, "_joined.xlsx")
-      }
-    },
-    # metadata in second sheet of joined data should have the following 
-    content = function(file) {
-      req(joined_data())  
-      metadata <- data.frame(
-        Growth_Metric_Units = input$growth_metric,
-        Time_Units = input$time_unit,
-        R_Version = R.version.string,
-        Date = Sys.Date()
-      )
+####
+observeEvent(input$update_controls, {
+  data <- joined_data()
+  if (!is.null(data)) {
+    control_var <- if (input$control_location == "Treatment Name") "treatment_name" else "well_annotation"
+    if (control_var %in% names(data)) {
+      # Initialize treatment_type based on selected controls
+      data$treatment_type <- ifelse(data[[control_var]] == input$media_control, "Media Control",
+                                    ifelse(data[[control_var]] == input$negative_control, "Negative Control",
+                                           ifelse(data[[control_var]] == input$positive_control, "Monotherapy", data$treatment_type)))
       
-      write_xlsx(list("Joined Data" = joined_data(), "Metadata" = metadata), path = file)
+      # Update treatment_type for max concentration if selected
+      if (input$positive_control_concentration == "Yes") {
+        # Identify the maximum concentration for the selected positive control
+        max_concentration_data <- data %>%
+          filter(data[[control_var]] == input$positive_control) %>%
+          group_by(!!sym(control_var)) %>%
+          summarize(max_concentration = max(concentration, na.rm = TRUE)) %>%
+          ungroup()
+        
+        # Update treatment_type only for the highest concentration
+        data <- data %>%
+          left_join(max_concentration_data, by = control_var) %>%
+          mutate(treatment_type = ifelse(data[[control_var]] == input$positive_control & concentration == max_concentration, 
+                                         "Positive Control", treatment_type)) %>%
+          select(-max_concentration)
+      } else {
+        # If "No" is selected, mark all concentrations as Positive Control
+        data <- data %>%
+          mutate(treatment_type = ifelse(data[[control_var]] == input$positive_control, "Positive Control", treatment_type))
+      }
+      
+      joined_data(data)
     }
-  )
-  ###
+  }
+})
+    
+output$export_joined_data <- downloadHandler(
+  filename = function() {
+    # naming the file if Labguru is inported take "Plate_##" file name
+    plate_num <- if (!is.null(input$labguru_file)) { 
+      tolower(str_extract(basename(input$labguru_file$name), "(?i)^plate_(\\d+)")) 
+    } else {
+      "tecan"
+    }
+    labguru_name <- if (input$filter_type == "Labguru Model Name") { #labguru_name
+      tolower(input$model_name)
+    } else {
+      "custom_labguru_name"
+    }
+    #data type
+    data_type <- if (input$data_file_type == "Imaging") "growth" else "ctg"
+    drugging_suffix <- if (input$drugging_type == "Synergy") "_syn" else "" # if tecal is Synergy, "_syn" suffix
+    #filename based on the conditions
+    if (!is.null(plate_data())) {
+      if (input$tecan_data == "Yes") { # if Labguru Plate Map is present
+        paste0(plate_num, "_", labguru_name, "_", data_type, drugging_suffix, "_joined.xlsx")
+      } else {
+        paste0(plate_num, "_", labguru_name, "_", data_type, "_joined.xlsx")
+      }
+    } else { # No Labguru Plate Map
+      paste0("tecan_", data_type, drugging_suffix, "_joined.xlsx")
+    }
+  },
+  # metadata in second sheet of joined data should have the following 
+  content = function(file) {
+    req(joined_data())  
+    metadata <- data.frame(
+      Growth_Metric_Units = input$growth_metric,
+      Time_Units = input$time_unit,
+      R_Version = R.version.string,
+      Date = Sys.Date()
+    )
+    
+    write_xlsx(list("Joined Data" = joined_data(), "Metadata" = metadata), path = file)
+  }
+)
+###
 }
 
 shinyApp(ui, server)

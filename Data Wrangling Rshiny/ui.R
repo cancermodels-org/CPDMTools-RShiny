@@ -188,6 +188,13 @@ ui <- navbarPage(
               tabName = "joined_data_tab",
               fluidRow(
                 box(
+                  title = "Transfer Well Annotations", status = "primary", solidHeader = TRUE, width = 12,
+                  conditionalPanel(condition = "output.showTransferButton",
+                                        actionButton("transfer_annotations", "Transfer Well Annotations Separated by '-'"))
+                                  )
+                              ),
+              fluidRow(
+                box(
                   title = "Control Variables", status = "primary", solidHeader = TRUE, width = 12,
                   radioButtons("control_location", "Select Location of Control Variables",
                                choices = c("Treatment Name", "Well Annotation"),

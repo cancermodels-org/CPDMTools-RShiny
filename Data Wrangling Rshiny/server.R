@@ -106,6 +106,11 @@ server <- function(input, output, session) {
       }
       tecan_data(data)
       max_vals <- get_max_row_col(tecan_data()) # Get max row and column values
+      # Anand - added plate_range updateSliderInput
+      updateSliderInput(session, "plate_range", 
+                        min = 1, max = max(tecan_data()$plate), 
+                        value = c(1, max(tecan_data()$plate)))
+      
       updateSliderInput(session, "column_number_range", 
                         min = 1, max = max_vals$max_col, 
                         value = c(1, max_vals$max_col))
@@ -128,6 +133,7 @@ server <- function(input, output, session) {
   filtered_tecan_data <- reactive({
     req(tecan_data())
     data <- tecan_data()
+    data <- data[data$plate >= input$plate_range[1] & data$plate <= input$plate_range[2], ]
     data <- data[data$column >= input$column_number_range[1] & data$column <= input$column_number_range[2], ]  # Filter based on column number range
     min_row <- input$min_letter_range
     max_row <- input$max_letter_range
@@ -250,8 +256,8 @@ server <- function(input, output, session) {
     #print("Joining datasets...")
     #join datasets
     joined_data(plate_data_join(
-      labguru_plate_data_frame = if (!is.null(plate_data())) plate_data() else NULL,
-      tecan_plate_data_frame = if (!is.null(tecan_data())) tecan_data() else NULL,
+      labguru_plate_data_frame = if (!is.null(filtered_data())) filtered_data() else NULL, # Anand - Changed to filtered Labguru plate map
+      tecan_plate_data_frame = if (!is.null(filtered_tecan_data())) filtered_tecan_data() else NULL, # Anand - Changed to filtered Tecan data
       growth_data_frame = if (!is.null(growth_data())) growth_data() else NULL,
       ctg_data_frame = if (!is.null(ctg_data())) ctg_data() else NULL
     ))

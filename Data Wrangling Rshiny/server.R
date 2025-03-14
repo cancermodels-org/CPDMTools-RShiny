@@ -114,6 +114,12 @@ server <- function(input, output, session) {
       available_rows <- available_rows[available_rows %in% LETTERS[1:16]]
       updateSelectInput(session, "min_letter_range", choices = available_rows, selected = available_rows[1])
       updateSelectInput(session, "max_letter_range", choices = available_rows, selected = tail(available_rows, 1))
+      #plate range slider input
+      max_plate <- max(data$plate)
+      updateSliderInput(session, "plate_range", 
+                        min = 1, max = max_plate, 
+                        value = c(1, max_plate))
+      
       
     }, error = function(e) {
       showModal(modalDialog(
@@ -128,6 +134,9 @@ server <- function(input, output, session) {
   filtered_tecan_data <- reactive({
     req(tecan_data())
     data <- tecan_data()
+    # Filter based on plate range
+    data <- data[data$plate >= input$plate_range[1] & data$plate <= input$plate_range[2], ]
+    
     data <- data[data$column >= input$column_number_range[1] & data$column <= input$column_number_range[2], ]  # Filter based on column number range
     min_row <- input$min_letter_range
     max_row <- input$max_letter_range

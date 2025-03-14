@@ -190,7 +190,15 @@ ui <- navbarPage(
                 box(
                   title = "Transfer Well Annotations", status = "primary", solidHeader = TRUE, width = 12,
                   conditionalPanel(condition = "output.showTransferButton",
-                                        actionButton("transfer_annotations", "Transfer Well Annotations Separated by '-'"))
+                                        actionButton("transfer_annotations", "Transfer Well Annotations Separated by '-'"),
+                                    br(), 
+                                    helpText("This button will take well annotations separated by a '-' such as 'Drug A - 0.05' 
+                                             and transfer the data such that 'Drug A' will go to the treatment_name column, 
+                                              0.05 will go to the concentration column, and the treatment_type will be updated to 'Monotherapy'. 
+                                              Well annotations must follow the convention 'Drug Name - Concentration' and the concentration unit 
+                                              should be consistent between the Labguru plate map and the Tecan data if applicable.")
+                                  
+                                  )
                                   )
                               ),
               fluidRow(

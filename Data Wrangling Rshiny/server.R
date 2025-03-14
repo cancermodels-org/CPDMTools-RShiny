@@ -354,11 +354,13 @@ output$export_joined_data <- downloadHandler(
   content = function(file) {
     req(joined_data())  
     metadata <- data.frame(
-      Growth_Metric_Units = input$growth_metric,
-      Time_Units = input$time_unit,
-      R_Version = R.version.string,
-      Date = Sys.Date()
-    )
+        growth_metric_units = input$growth_metric,
+        #data_type = if growth or ctg data used,
+        data_type = if (input$data_file_type == "Imaging") "growth" else "ctg", 
+        time_units = input$time_unit,
+        r_Version = R.version.string,
+        date = Sys.Date()
+      )
     
     write_xlsx(list("Joined Data" = joined_data(), "Metadata" = metadata), path = file)
   }

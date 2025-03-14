@@ -254,18 +254,35 @@ server <- function(input, output, session) {
   observeEvent(input$control_location, {
     update_control_dropdowns()
   })
-  
-  observeEvent(input$join_datasets, {
-    #print("Joining datasets...")
-    #join datasets
-    joined_data(plate_data_join(
-      labguru_plate_data_frame = if (!is.null(plate_data())) plate_data() else NULL,
-      tecan_plate_data_frame = if (!is.null(tecan_data())) tecan_data() else NULL,
-      growth_data_frame = if (!is.null(growth_data())) growth_data() else NULL,
-      ctg_data_frame = if (!is.null(ctg_data())) ctg_data() else NULL
-    ))
-    update_control_dropdowns()
+#joining datasets
+#data type is currently selected
+ observeEvent(input$join_datasets, {
+    if (input$data_file_type == "Imaging") {
+      ctg_data(NULL)
+    } else if (input$data_file_type == "CTG") {
+      growth_data(NULL)
+    }
+    #function to join datasets
+    tryCatch({
+      joined_data(plate_data_join(
+        labguru_plate_data_frame = if (!is.null(plate_data())) plate_data() else NULL,
+        tecan_plate_data_frame = if (!is.null(filtered_tecan_data())) filtered_tecan_data() else NULL,
+        growth_data_frame = if (!is.null(growth_data())) growth_data() else NULL,
+        ctg_data_frame = if (!is.null(ctg_data())) ctg_data() else NULL
+      ))
+      update_control_dropdowns()
+    }, error = function(e) {
+      showModal(modalDialog(
+        title = "Error",
+        paste("An error occurred while joining datasets:", e$message),
+        easyClose = TRUE
+      ))
+    })
   })
+
+
+
+
   ##### transfer button
     output$showTransferButton <- reactive({
       data <- joined_data()

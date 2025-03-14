@@ -358,7 +358,7 @@ output$export_joined_data <- downloadHandler(
         #data_type = if growth or ctg data used,
         data_type = if (input$data_file_type == "Imaging") "growth" else "ctg", 
         time_units = input$time_unit,
-        r_Version = R.version.string,
+        r_version = R.version.string,
         date = Sys.Date()
       )
     

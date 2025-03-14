@@ -265,8 +265,8 @@ server <- function(input, output, session) {
     #function to join datasets
     tryCatch({
       joined_data(plate_data_join(
-        labguru_plate_data_frame = if (!is.null(plate_data())) plate_data() else NULL,
-        tecan_plate_data_frame = if (!is.null(filtered_tecan_data())) filtered_tecan_data() else NULL,
+        labguru_plate_data_frame = if (!is.null(filtered_data())) filtered_data() else NULL, #filtered Labguru plate map
+        tecan_plate_data_frame = if (!is.null(filtered_tecan_data())) filtered_tecan_data() else NULL, #filtered Tecan data
         growth_data_frame = if (!is.null(growth_data())) growth_data() else NULL,
         ctg_data_frame = if (!is.null(ctg_data())) ctg_data() else NULL
       ))

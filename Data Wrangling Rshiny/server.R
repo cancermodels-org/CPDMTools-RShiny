@@ -262,7 +262,6 @@ server <- function(input, output, session) {
       growth_data(NULL)
     }
     #function to join datasets
-    tryCatch({
       joined_data(plate_data_join(
         labguru_plate_data_frame = if (!is.null(filtered_data())) filtered_data() else NULL, #filtered Labguru plate map
         tecan_plate_data_frame = if (!is.null(filtered_tecan_data())) filtered_tecan_data() else NULL, #filtered Tecan data
@@ -270,13 +269,6 @@ server <- function(input, output, session) {
         ctg_data_frame = if (!is.null(ctg_data())) ctg_data() else NULL
       ))
       update_control_dropdowns()
-    }, error = function(e) {
-      showModal(modalDialog(
-        title = "Error",
-        paste("An error occurred while joining datasets:", e$message),
-        easyClose = TRUE
-      ))
-    })
   })
 
 

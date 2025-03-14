@@ -41,8 +41,7 @@ server <- function(input, output, session) {
       selected_rows <- row_letters[which(row_letters == input$row_min):which(row_letters == input$row_max)]
       
       plate_data() %>%
-        filter(inventory_item_name == input$model_name_text, 
-               row %in% selected_rows, 
+        filter(row %in% selected_rows, 
                column >= input$column_range[1] & column <= input$column_range[2])
     }
   })

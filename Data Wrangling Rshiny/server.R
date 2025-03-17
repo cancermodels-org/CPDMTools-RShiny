@@ -51,7 +51,7 @@ server <- function(input, output, session) {
   
   #render DT
   output$plate_map_table <- renderDT({
-    datatable(filtered_data())
+    datatable(filtered_data(), options = list(scrollX = TRUE))
   })
   
   #download Data

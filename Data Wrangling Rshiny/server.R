@@ -58,7 +58,7 @@ server <- function(input, output, session) {
   output$export_data <- downloadHandler(
     filename = function() {
       file_name_lower <- tolower(input$labguru_file$name)
-      extracted_prefix <- strsplit(file_name_lower, "CPDM")[[1]][1]
+      extracted_prefix <- str_extract(file_name_lower, ".*?(?=cpdm)")
       if (input$filter_type == "Labguru Model Name") {
         paste0(extracted_prefix, tolower(input$model_name), "_labguru_prep.xlsx")
       } else {

@@ -126,10 +126,11 @@ ui <- navbarPage(
                                           selected = "Micromolar (µM)"))
                   ),
                   downloadButton("export_tecan", "Export Prepared Tecan Report")
-                )
-              ),
-              box(title = "Filter Options", status = "primary", solidHeader = TRUE, width = 12, 
+                ),
+                  box(title = "Filter Options", status = "primary", solidHeader = TRUE, width = 12, 
                   DTOutput("tecan_plate_map_table")
+              )
+              )
               )
             ),
             # 3 Growth data 

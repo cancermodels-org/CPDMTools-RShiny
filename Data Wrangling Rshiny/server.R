@@ -30,6 +30,9 @@ server <- function(input, output, session) {
   })
   # Filtered Data
   filtered_data <- reactive({
+    if (is.null(plate_data())) {
+      return(NULL)
+    }
     req(plate_data())
     
     if (input$filter_type == "Labguru Model Name") {
@@ -131,6 +134,10 @@ server <- function(input, output, session) {
   
   # Reactive filtered
   filtered_tecan_data <- reactive({
+    
+    if (is.null(tecan_data())) {
+          return(NULL)
+    }
     req(tecan_data())
     data <- tecan_data()
     # Filter based on plate range

@@ -360,7 +360,7 @@ output$export_joined_data <- downloadHandler(
     labguru_name <- if (input$filter_type == "Labguru Model Name") { #labguru_name
       tolower(input$model_name)
     } else {
-      "custom_labguru_name"
+       tolower(input$model_name_text)
     }
     #data type
     data_type <- if (input$data_file_type == "Imaging") "growth" else "ctg"

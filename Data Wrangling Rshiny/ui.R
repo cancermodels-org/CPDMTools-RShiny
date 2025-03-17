@@ -244,7 +244,7 @@ ui <- navbarPage(
   
   # TabPanel 3 placeholder for Graphs and CTG analysis 
   tabPanel(
-    "Graphs and CTG Analysis RShiny"
+    "Data Analysis RShiny"
   ),
   
   # placeholder for discription, About and info page

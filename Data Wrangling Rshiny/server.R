@@ -230,6 +230,15 @@ server <- function(input, output, session) {
   ## 5 join table 
   joined_data <- reactiveVal(NULL)
   
+# observe is Tecan data is available
+  observe({
+    if (is.null(tecan_data())) {
+        updateRadioButtons(session, "control_location", selected = "Well Annotation")
+      } else {
+          updateRadioButtons(session, "control_location", selected = "Treatment Name")
+      }
+})
+  
     update_control_dropdowns <- function() {
     data <- joined_data()
     if (!is.null(data)) {

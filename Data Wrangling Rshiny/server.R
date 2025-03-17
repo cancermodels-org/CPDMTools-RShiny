@@ -229,6 +229,14 @@ server <- function(input, output, session) {
   )
   ## 5 join table 
   joined_data <- reactiveVal(NULL)
+  # Observe if Tecan data for default selection
+observe({
+    if (is.null(tecan_data())) {
+        updateRadioButtons(session, "control_location", selected = "Well Annotation")
+      } else {
+          updateRadioButtons(session, "control_location", selected = "Treatment Name")
+      }
+})
   
     update_control_dropdowns <- function() {
     data <- joined_data()
@@ -266,8 +274,10 @@ server <- function(input, output, session) {
     
     #join datasets
     joined_data(plate_data_join(
-      labguru_plate_data_frame = if (!is.null(plate_data())) plate_data() else NULL,
-      tecan_plate_data_frame = if (!is.null(tecan_data())) tecan_data() else NULL,
+      #labguru_plate_data_frame = if (!is.null(plate_data())) plate_data() else NULL,
+      labguru_plate_data_frame = if (!is.null(filtered_data())) filtered_data() else NULL,
+      #tecan_plate_data_frame = if (!is.null(tecan_data())) tecan_data() else NULL,
+      tecan_plate_data_frame = if (!is.null(filtered_tecan_data())) filtered_tecan_data() else NULL,
       growth_data_frame = if (!is.null(growth_data())) growth_data() else NULL,
       ctg_data_frame = if (!is.null(ctg_data())) ctg_data() else NULL
     ))

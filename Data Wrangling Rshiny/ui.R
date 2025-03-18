@@ -7,7 +7,7 @@ ui <- navbarPage(
   
   # Home Tab (Containing the Dashboard)
   tabPanel(
-    "CPDM Data Wrangling RShiny",
+    "Data Wrangling RShiny",
     fluidPage(
       dashboardPage(
         dashboardHeader(title = "CPDM Data Wrangling RShiny"),

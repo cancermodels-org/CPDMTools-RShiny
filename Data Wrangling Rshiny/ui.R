@@ -10,7 +10,7 @@ ui <- navbarPage(
     "Data Wrangling RShiny",
     fluidPage(
       dashboardPage(
-        dashboardHeader(title = "CPDM Data Wrangling RShiny"),
+        dashboardHeader(title = "Data Wrangling RShiny"),
         dashboardSidebar(
           #SideBarPanels
           sidebarMenu(

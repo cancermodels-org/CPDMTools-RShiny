@@ -212,26 +212,61 @@ server <- function(input, output, session) {
   )
   ### 4 CTG image data 
   ctg_data <- reactiveVal(NULL)
-  
   observeEvent(input$import_ctg, {
     req(input$ctg_file)
-    data <- ctg_prep(file_path = input$ctg_file$datapath) # ctg_prep() function
-    ctg_data(data)
+    equipment <- input$ctg_type
+    tryCatch({
+      data <- CPDMTools::ctg_prep(file_path = input$ctg_file$datapath, equipment = equipment)
+      ctg_data(data)
+      
+      if (equipment == "SpectraMAX iD3") {
+        #slid and select options for "SpectraMAX iD3" DATA
+        updateSliderInput(session, "plate_number_range",
+                          min = min(data$ctg_plate_number, na.rm = TRUE),
+                          max = max(data$ctg_plate_number, na.rm = TRUE),
+                          value = c(min(data$ctg_plate_number, na.rm = TRUE), max(data$ctg_plate_number, na.rm = TRUE)))
+        
+        updateSelectInput(session, "plate_name",
+                          choices = c("All Plates", unique(data$ctg_plate_name)),
+                          selected = "All Plates")
+      }
+    }, error = function(e) {
+      showModal(modalDialog(
+        title = "Error",
+        paste("An error occurred:", e$message),
+        easyClose = TRUE
+      ))
+    })
   })
-  
-  output$ctg_data_table <- renderDT({ #ctg_data_table is output dt 
+  # Reactive expression for filtered CTG data
+  filtered_ctg_data <- reactive({
     req(ctg_data())
-    datatable(ctg_data())
+    data <- ctg_data()
+    if (input$ctg_type == "SpectraMAX iD3") {
+      if (input$filter_data_by == "CTG Plate Number Range") {
+        data <- data[data$ctg_plate_number >= input$plate_number_range[1] &
+                       data$ctg_plate_number <= input$plate_number_range[2], ]
+      } else if (input$filter_data_by == "CTG Plate Name" && input$plate_name != "All Plates") {
+        data <- data[data$ctg_plate_name == input$plate_name, ]
+      }
+    }
+    data 
+  })
+  #filtered DT
+  output$ctg_data_table <- renderDT({
+    req(filtered_ctg_data())
+    datatable(filtered_ctg_data(), options = list(scrollX = TRUE))
   })
   
+  #export data
   output$export_ctg_data <- downloadHandler(
     filename = function() {
       original_name <- tools::file_path_sans_ext(input$ctg_file$name)
       paste0(original_name, "_prep.xlsx")
     },
     content = function(file) {
-      req(ctg_data())
-      write.xlsx(ctg_data(), file)
+      req(filtered_ctg_data())
+      write.xlsx(filtered_ctg_data(), file)
     }
   )
   ## 5 join table 
@@ -271,26 +306,19 @@ observe({
 #joining datasets
 #data type is currently selected
   observeEvent(input$join_datasets, {
-    
-    if (input$data_file_type == "Imaging") {
-      ctg_data(NULL)
-    } else if (input$data_file_type == "CTG") {
-      growth_data(NULL)
-    }
-    #print("Joining datasets...")
-    
+    ctg_data_to_join <- if (input$data_file_type == "CTG") filtered_ctg_data() else NULL
+    growth_data_to_join <- if (input$data_file_type == "Imaging") growth_data() else NULL
     #join datasets
     joined_data(plate_data_join(
       labguru_plate_data_frame = if (!is.null(filtered_data())) filtered_data() else NULL,
       tecan_plate_data_frame = if (!is.null(filtered_tecan_data())) filtered_tecan_data() else NULL,
       growth_data_frame = if (!is.null(growth_data())) growth_data() else NULL,
-      ctg_data_frame = if (!is.null(ctg_data())) ctg_data() else NULL
+      #ctg_data_frame = if (!is.null(ctg_data())) ctg_data() else NULL
+      ctg_data_frame = ctg_data_to_join
+
     ))
     update_control_dropdowns()
   })
-
-
-
 
   ##### transfer button
     output$showTransferButton <- reactive({
@@ -343,7 +371,6 @@ observeEvent(input$update_controls, {
         data <- data %>%
           mutate(treatment_type = ifelse(data[[control_var]] == input$positive_control, "Positive Control", treatment_type))
       }
-      
       joined_data(data)
     }
   }

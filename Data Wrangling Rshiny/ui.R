@@ -138,8 +138,8 @@ ui <- navbarPage(
               tabName = "growth_tab",
               fluidRow(
                 box(
-                  title = "Select Time Point After Treatment", status = "primary", solidHeader = TRUE, width = 6,
-                  selectInput("time_point", "Please Select First Time Point Recorded After Treatment Was Given", choices = NULL)
+                  title = "Select Time Point Before Treatment", status = "primary", solidHeader = TRUE, width = 6,
+                  selectInput("time_point", "Please Select First Time Point Recorded Right Before Treatment Was Given", choices = NULL)
                 ),
                 box(
                   title = "Select Growth Metric Type", status = "primary", solidHeader = TRUE, width = 6,

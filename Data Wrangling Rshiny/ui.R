@@ -5,14 +5,13 @@ ui <- navbarPage(
   theme = shinytheme("flatly"),
   id = "main_navbar",
   
-  # Home Tab (Containing the Dashboard)
+  # Tab 1: Data Wrangling RShiny
   tabPanel(
     "Data Wrangling RShiny",
     fluidPage(
       dashboardPage(
         dashboardHeader(title = "Data Wrangling RShiny"),
         dashboardSidebar(
-          #SideBarPanels
           sidebarMenu(
             menuItem("Import Data", tabName = "import_data", icon = icon("upload")),
             menuItem("Labguru Plate Map", tabName = "labguru_tab"),
@@ -27,7 +26,7 @@ ui <- navbarPage(
             tabItem(
               tabName = "import_data",
               fluidRow(
-                #Data File Type
+                # Data File Type
                 box(
                   title = "Data File Type", status = "primary", solidHeader = TRUE, width = 6,
                   radioButtons("data_file_type", "Data File Type", choices = c("Imaging", "CTG"), selected = "Imaging"),
@@ -43,7 +42,7 @@ ui <- navbarPage(
                     actionButton("import_ctg", "Import File")
                   )
                 ),
-                #Tecan Drugging Data
+                # Tecan Drugging Data
                 box(
                   title = "Tecan Drugging Data", status = "primary", solidHeader = TRUE, width = 6,
                   radioButtons("tecan_data", "Tecan Drugging Data", choices = c("Yes", "No"), selected = "Yes"),
@@ -55,22 +54,21 @@ ui <- navbarPage(
                   )
                 )
               ),
-              #Labguru Plate Map
+              # Labguru Plate Map
               fluidRow(
                 box(
                   title = "Labguru Plate Map", status = "primary", solidHeader = TRUE, width = 6,
                   fileInput("labguru_file", "Import Labguru Plate Map (.xlsx)"),
                   actionButton("import_labguru", "Import File")
                 ),
-                #Join Datasets
+                # Join Datasets
                 box(
                   title = "Join Datasets", status = "primary", solidHeader = TRUE, width = 6,
                   actionButton("join_datasets", "Join Datasets")
                 )
               )
             ),
-            # TabPanels for each data start here 
-            # 1 labguru
+            # 1. Labguru Plate Map Tab
             tabItem(
               tabName = "labguru_tab",
               fluidRow(
@@ -88,9 +86,7 @@ ui <- navbarPage(
                       column(6, selectInput("row_min", "Select Min Row Letter", choices = NULL, selected = NULL)),
                       column(6, selectInput("row_max", "Select Max Row Letter", choices = NULL, selected = NULL))
                     ),
-                    
                     sliderInput("column_range", "Column Number Range", min = 1, max = 1, value = c(1, 1), step = 1, ticks = FALSE)
-                    
                   ),
                   downloadButton("export_data", "Export Prepared Labguru Plate Map")
                 ),
@@ -100,40 +96,40 @@ ui <- navbarPage(
                 )
               )
             ),
-            # 2 Tecan report
+            # 2. Tecan Report Tab
             tabItem(
               tabName = "tecan_tab",
               fluidRow(
                 box(
                   status = "primary", solidHeader = TRUE, width = 12,
                   fluidRow(
-                    column(6, 
+                    column(6,
                            sliderInput("plate_range", "Plate Number Range", min = 1, max = 1, value = c(1, 1), step = 1, ticks = FALSE))
                   ),
                   conditionalPanel(
                     condition = "output.labguru_present == false",
                     p("Warning: When Labguru plate map is not present, any well within the filtered row and column range of the Tecan plate map that did NOT contain dispensing data will be converted to Media Controls when joined with Imaging or CTG data (assumes your cells are plated in a complete rectangular matrix)."),
-                    
-                    sliderInput("column_number_range", "Column Number Range", min = 1, max = 1, value = c(1, 1), step = 1, ticks = FALSE, animate = TRUE), 
-                    fluidRow( column(6, selectInput("min_letter_range", "Select Min Row Letter", choices = NULL, selected = NULL)),
-                              column(6, selectInput("max_letter_range", "Select Max Row Letter", choices = NULL, selected = NULL))
-                    ),
+                    sliderInput("column_number_range", "Column Number Range", min = 1, max = 1, value = c(1, 1), step = 1, ticks = FALSE, animate = TRUE),
+                    fluidRow(
+                      column(6, selectInput("min_letter_range", "Select Min Row Letter", choices = NULL, selected = NULL)),
+                      column(6, selectInput("max_letter_range", "Select Max Row Letter", choices = NULL, selected = NULL))
+                    )
                   ),
                   fluidRow(
-                    column(6, selectInput("concentration_units", "Concentration Units of Tecan Report", 
-                                          choices = c("Molar (M)", "Millimolar (mM)", "Micromolar (µM)", 
-                                                      "Nanomolar (nM)", "Picomolar (pM)"), 
+                    column(6, selectInput("concentration_units", "Concentration Units of Tecan Report",
+                                          choices = c("Molar (M)", "Millimolar (mM)", "Micromolar (µM)",
+                                                      "Nanomolar (nM)", "Picomolar (pM)"),
                                           selected = "Micromolar (µM)"))
                   ),
                   downloadButton("export_tecan", "Export Prepared Tecan Report")
                 ),
-                  box(title = "Filter Options", status = "primary", solidHeader = TRUE, width = 12, 
+                box(
+                  title = "Filter Options", status = "primary", solidHeader = TRUE, width = 12,
                   DTOutput("tecan_plate_map_table")
-              )
-              )
+                )
               )
             ),
-            # 3 Growth data 
+            # 3. Growth Data Tab
             tabItem(
               tabName = "growth_tab",
               fluidRow(
@@ -143,16 +139,16 @@ ui <- navbarPage(
                 ),
                 box(
                   title = "Select Growth Metric Type", status = "primary", solidHeader = TRUE, width = 6,
-                  selectInput("growth_metric", "Select Growth Metric Type of Growth File", 
-                              choices = c("Confluency (%)", "Object Sum Area (µM2)", "Largest Object Area (µM2)", "Relative Fluorescence Intensity (AU)"), 
+                  selectInput("growth_metric", "Select Growth Metric Type of Growth File",
+                              choices = c("Confluency (%)", "Object Sum Area (µM2)", "Largest Object Area (µM2)", "Relative Fluorescence Intensity (AU)"),
                               selected = "Confluency (%)")
                 )
               ),
               fluidRow(
                 box(
                   title = "Select Time Unit", status = "primary", solidHeader = TRUE, width = 6,
-                  selectInput("time_unit", "Select Time Unit of Growth File", 
-                              choices = c("Minutes", "Hours", "Days"), 
+                  selectInput("time_unit", "Select Time Unit of Growth File",
+                              choices = c("Minutes", "Hours", "Days"),
                               selected = "Hours")
                 ),
                 box(
@@ -167,7 +163,7 @@ ui <- navbarPage(
                 )
               )
             ),
-            # CTG report
+            # 4. CTG Report Tab
             tabItem(
               tabName = "ctg_tab",
               fluidRow(
@@ -182,39 +178,40 @@ ui <- navbarPage(
                   DTOutput("ctg_data_table")
                 )
               )
-              
             ),
-            # Join Data
+            # 5. Joined Data Tab
             tabItem(
               tabName = "joined_data_tab",
               fluidRow(
                 box(
                   title = "Transfer Well Annotations", status = "primary", solidHeader = TRUE, width = 12,
-                  conditionalPanel(condition = "output.showTransferButton",
-                                        actionButton("transfer_annotations", "Transfer Well Annotations Separated by '-'"),
-                                    br(), 
-                                    helpText("This button will take well annotations separated by a '-' such as 'Drug A - 0.05' 
-                                             and transfer the data such that 'Drug A' will go to the treatment_name column, 
-                                              0.05 will go to the concentration column, and the treatment_type will be updated to 'Monotherapy'. 
-                                              Well annotations must follow the convention 'Drug Name - Concentration' and the concentration unit 
-                                              should be consistent between the Labguru plate map and the Tecan data if applicable.")
-                                  
-                                  )
-                                  )
-                              ),
+                  conditionalPanel(
+                    condition = "output.showTransferButton",
+                    actionButton("transfer_annotations", "Transfer Well Annotations Separated by '-'"),
+                    br(),
+                    helpText(
+                      "This button will take well annotations separated by a '-' such as 'Drug A - 0.05' 
+                      and transfer the data such that 'Drug A' will go to the treatment_name column, 
+                      0.05 will go to the concentration column, and the treatment_type will be updated to 'Monotherapy'. 
+                      Well annotations must follow the convention 'Drug Name - Concentration' and the concentration unit 
+                      should be consistent between the Labguru plate map and the Tecan data if applicable."
+                    )
+                  )
+                )
+              ),
               fluidRow(
                 box(
                   title = "Control Variables", status = "primary", solidHeader = TRUE, width = 12,
                   radioButtons("control_location", "Select Location of Control Variables",
                                choices = c("Treatment Name", "Well Annotation"),
-                               selected = "Treatment Name"), 
+                               selected = "Treatment Name"),
                   selectInput("media_control", "Please Select the Media Control", choices = NULL),
                   selectInput("negative_control", "Please Select the Negative Control", choices = NULL),
                   selectInput("positive_control", "Please Select the Positive Control", choices = NULL),
-                  radioButtons("positive_control_concentration", "Mark Highest Concentration as Positive Control", 
-                               choiceValues=list("No","Yes"),
-                               choiceNames=list("No","Yes"), 
-                               selected ="Yes", inline=TRUE),  
+                  radioButtons("positive_control_concentration", "Mark Highest Concentration as Positive Control",
+                               choiceValues = list("No", "Yes"),
+                               choiceNames = list("No", "Yes"),
+                               selected = "Yes", inline = TRUE),
                   actionButton("update_controls", "Update Controls")
                 )
               ),
@@ -230,25 +227,112 @@ ui <- navbarPage(
                   DTOutput("joined_data_table")
                 )
               )
-              
             )
-            
-          ))))), # tab one Data Wrangling interface end here 
-  
-  # TabPanel 2 placeholder for QC Rshiny 
-  tabPanel(
-    "Data QC RShiny",
-    fluidPage(
-      titlePanel("Data QC RShiny Content")
+          )
+        )
+      )
     )
   ),
   
-  # TabPanel 3 placeholder for Graphs and CTG analysis 
+  # Tab 2: Data QC RShiny (Integrated UI from previous “CPDM Data Quality Control App”)
+  tabPanel(
+    "Data QC RShiny",
+    fluidPage(
+      titlePanel("CPDM Data Quality Control App"),
+      sidebarLayout(
+        sidebarPanel(
+          radioButtons("data_type", "Data Type",
+                       choices = c("Growth Data", "End-Point Assay Data"),
+                       selected = "Growth Data"
+          ),
+          conditionalPanel(
+            condition = "input.data_type == 'Growth Data'",
+            fileInput("growth_file", "Import Growth Data (.xlsx, .csv, .txt)",
+                      accept = c(".csv", ".xlsx", ".txt")
+            )
+          ),
+          conditionalPanel(
+            condition = "input.data_type == 'End-Point Assay Data'",
+            fileInput("ctg_file", "Import End-Point Assay Data (.xlsx, .csv, .txt)",
+                      accept = c(".csv", ".xlsx", ".txt")
+            )
+          ),
+          hr(),
+          h4("Exporting Data"),
+          conditionalPanel(
+            condition = "input.data_type == 'Growth Data'",
+            selectInput("outlier_manual_only", "Outliers to Exclude",
+                        choices = c(
+                          "Outliers Manually Annotated" = TRUE,
+                          "Outliers Auto and Manually Annotated" = FALSE
+                        ),
+                        selected = TRUE
+            ),
+            checkboxInput("growthcurveme", "GrowthCurveME", value = TRUE),
+            checkboxInput("lgrscore", "LGRscore", value = TRUE),
+            checkboxInput("prism", "GraphPad PRISM", value = TRUE),
+            # This export button stays visible but will do nothing until rv$updated_data exists
+            downloadButton("export_growth_data", "Export Data")
+          ),
+          conditionalPanel(
+            condition = "input.data_type == 'End-Point Assay Data'",
+            selectInput("outlier_manual_only_ctg", "Outliers to Exclude",
+                        choices = c(
+                          "Outliers Manually Annotated" = TRUE,
+                          "Outliers Auto and Manually Annotated" = FALSE
+                        ),
+                        selected = TRUE
+            ),
+            checkboxInput("prism_ctg", "GraphPad PRISM", value = TRUE),
+            downloadButton("export_ctg_data", "Export Data")
+          )
+        ),
+        
+        mainPanel(
+          tabsetPanel(
+            id = "main_tabs",
+            tabPanel(
+              "Replicates and Concentrations",
+              value = "tab_rep_conc",
+              numericInput("round_by", "Round Concentrations By", value = 4),
+              selectInput("use_nearest_10", "Round to Nearest 10",
+                          choices = c("Yes" = TRUE, "No" = FALSE),
+                          selected = TRUE
+              ),
+              actionButton("lock_round", "Lock In Rounded Concentrations"),
+              DTOutput("rep_conc_table")
+            ),
+            tabPanel("Growth Data QC", value = "tab_growth_qc"),
+            tabPanel(
+              "Controls QC and Normalization",
+              value = "tab_ctg_controls",
+              checkboxInput("show_outlier", "Show Outliers", value = TRUE),
+              checkboxInput("make_interactive", "Make Interactive", value = TRUE),
+              uiOutput("positive_control_ui"),
+              conditionalPanel(
+                condition = "input.make_interactive == false",
+                plotOutput("ctg_control_ggplot")
+              ),
+              conditionalPanel(
+                condition = "input.make_interactive == true",
+                plotlyOutput("ctg_control_plotly")
+              ),
+              actionButton("normalize_ctg", "Normalize Data")
+            ),
+            tabPanel("End-Point Assay QC", value = "tab_ctg_qc"),
+            tabPanel("Updated Dataset", value = "tab_updated")
+          )
+        )
+      )
+    )
+  ),
+  
+  # Tab 3: Data Analysis RShiny
   tabPanel(
     "Data Analysis RShiny"
   ),
   
-  # placeholder for discription, About and info page
+  # Tab 4: About and Info
   tabPanel(
     "About and Info",
     fluidPage(
@@ -257,4 +341,4 @@ ui <- navbarPage(
   )
 )
 
-
+shinyApp(ui, server)

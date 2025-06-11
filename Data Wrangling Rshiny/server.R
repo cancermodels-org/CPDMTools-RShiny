@@ -1,12 +1,12 @@
 source("global.R")
 
+
 server <- function(input, output, session) {
-  ####### Data Wrangling RShiny Server Logic #######
-  
-  # 1. Labguru
+  # 1 labguru
   plate_data <- reactiveVal(NULL)
+  #function to get the max row and column values
   get_max_row_col <- function(data) {
-    max_row_letter <- max(data$row)
+    max_row_letter <- max(data$row)  
     max_col_number <- max(data$column)
     list(max_row = max_row_letter, max_col = max_col_number)
   }
@@ -14,27 +14,29 @@ server <- function(input, output, session) {
   observeEvent(input$import_labguru, {
     req(input$labguru_file)
     plate_data(labguru_plate_prep(input$labguru_file$datapath))
-    max_vals <- get_max_row_col(plate_data())
+    max_vals <- get_max_row_col(plate_data()) #get max row and column
     row_letters <- unique(plate_data()$row)
     row_letters <- row_letters[order(row_letters)]
     
-    updateSelectInput(session, "model_name",
-                      choices = unique(plate_data()$inventory_item_name),
-                      selected = unique(plate_data()$inventory_item_name)[1]
-    )
-    updateTextInput(session, "model_name_text",
-                    value = unique(plate_data()$inventory_item_name)[1]
-    )
+    #model name inputs
+    updateSelectInput(session, "model_name", 
+                      choices = unique(plate_data()$inventory_item_name), 
+                      selected = unique(plate_data()$inventory_item_name)[1])
+    updateTextInput(session, "model_name_text", 
+                    value = unique(plate_data()$inventory_item_name)[1])
     updateSelectInput(session, "row_min", choices = row_letters, selected = row_letters[1])
     updateSelectInput(session, "row_max", choices = row_letters, selected = tail(row_letters, 1))
-    updateSliderInput(session, "column_range",
-                      min = 1, max = max_vals$max_col,
-                      value = c(1, max_vals$max_col)
-    )
+    updateSliderInput(session, "column_range", 
+                      min = 1, max = max_vals$max_col, 
+                      value = c(1, max_vals$max_col))
   })
-  
+  # Filtered Data
   filtered_data <- reactive({
-    if (is.null(plate_data())) return(NULL)
+    if (is.null(plate_data())) {
+      return(NULL)
+    }
+    req(plate_data())
+    
     if (input$filter_type == "Labguru Model Name") {
       plate_data() %>%
         filter(inventory_item_name == input$model_name)
@@ -42,21 +44,24 @@ server <- function(input, output, session) {
       row_letters <- unique(plate_data()$row)
       row_letters <- row_letters[order(row_letters)]
       selected_rows <- row_letters[which(row_letters == input$row_min):which(row_letters == input$row_max)]
+      
       plate_data() %>%
-        filter(
-          row %in% selected_rows,
-          column >= input$column_range[1] & column <= input$column_range[2]
-        )
+        filter(row %in% selected_rows, 
+               column >= input$column_range[1] & column <= input$column_range[2])
     }
   })
   
+  #render DT
   output$plate_map_table <- renderDT({
+    # req(filtered_data(), options = list(scrollX = TRUE))
     datatable(filtered_data(), options = list(scrollX = TRUE))
   })
   
+  #download Data
   output$export_data <- downloadHandler(
     filename = function() {
       file_name_lower <- tolower(input$labguru_file$name)
+      #extracted_prefix <- strsplit(file_name_lower, "CPDM")[[1]][1]
       extracted_prefix <- str_extract(file_name_lower, ".*?(?=cpdm)")
       if (input$filter_type == "Labguru Model Name") {
         paste0(extracted_prefix, tolower(input$model_name), "_labguru_prep.xlsx")
@@ -66,23 +71,26 @@ server <- function(input, output, session) {
     },
     content = function(file) {
       req(filtered_data())
-      writexl::write_xlsx(filtered_data(), path = file)
+      write.xlsx(filtered_data(), file)
     }
   )
   
-  
-  # 2. Tecan
+  # 2 Tecan data
   tecan_data <- reactiveVal(NULL)
+  #get max row (letter) and column values
   get_max_row_col <- function(data) {
-    max_row_letter <- max(data$row)
-    max_col_number <- max(data$column)
+    max_row_letter <- max(data$row)   # Max row value (letter)
+    max_col_number <- max(data$column) # Max column value (numeric)
     list(max_row = max_row_letter, max_col = max_col_number)
   }
-  
+  #check if Labguru plate is present
   labguru_present <- reactive({
     !is.null(plate_data())
   })
-  output$labguru_present <- reactive({ labguru_present() })
+  
+  output$labguru_present <- reactive({
+    labguru_present()
+  })
   outputOptions(output, "labguru_present", suspendWhenHidden = FALSE)
   
   observeEvent(input$import_tecan, {
@@ -93,27 +101,31 @@ server <- function(input, output, session) {
           file_path = input$tecan_file$datapath,
           remove_na = TRUE
         )
-      } else {
+      } else if (input$drugging_type == "Synergy") {
         data <- tecan_report_prep_syn(
           file_path = input$tecan_file$datapath,
           remove_na = TRUE
         )
+      } else {
+        stop("Invalid drugging type selected.")
       }
       tecan_data(data)
-      max_vals <- get_max_row_col(tecan_data())
-      updateSliderInput(session, "column_number_range",
-                        min = 1, max = max_vals$max_col,
-                        value = c(1, max_vals$max_col)
-      )
+      max_vals <- get_max_row_col(tecan_data()) # Get max row and column values
+      updateSliderInput(session, "column_number_range", 
+                        min = 1, max = max_vals$max_col, 
+                        value = c(1, max_vals$max_col))
+      # Update the selectInput for row letters
       available_rows <- unique(data$row)
       available_rows <- available_rows[available_rows %in% LETTERS[1:16]]
       updateSelectInput(session, "min_letter_range", choices = available_rows, selected = available_rows[1])
       updateSelectInput(session, "max_letter_range", choices = available_rows, selected = tail(available_rows, 1))
+      #plate range slider input
       max_plate <- max(data$plate)
-      updateSliderInput(session, "plate_range",
-                        min = 1, max = max_plate,
-                        value = c(1, max_plate)
-      )
+      updateSliderInput(session, "plate_range", 
+                        min = 1, max = max_plate, 
+                        value = c(1, max_plate))
+      
+      
     }, error = function(e) {
       showModal(modalDialog(
         title = "Error",
@@ -123,23 +135,31 @@ server <- function(input, output, session) {
     })
   })
   
+  # Reactive filtered
   filtered_tecan_data <- reactive({
-    if (is.null(tecan_data())) return(NULL)
+    
+    if (is.null(tecan_data())) {
+      return(NULL)
+    }
     req(tecan_data())
     data <- tecan_data()
+    # Filter based on plate range
     data <- data[data$plate >= input$plate_range[1] & data$plate <= input$plate_range[2], ]
-    data <- data[data$column >= input$column_number_range[1] & data$column <= input$column_number_range[2], ]
+    
+    data <- data[data$column >= input$column_number_range[1] & data$column <= input$column_number_range[2], ]  # Filter based on column number range
     min_row <- input$min_letter_range
     max_row <- input$max_letter_range
     data <- data[data$row >= min_row & data$row <= max_row, ]
+    
     data
   })
-  
+  # Render table 
   output$tecan_plate_map_table <- renderDT({
     req(filtered_tecan_data())
     datatable(filtered_tecan_data(), options = list(scrollX = TRUE))
   })
   
+  # Download DT
   output$export_tecan <- downloadHandler(
     filename = function() {
       original_name <- tools::file_path_sans_ext(input$tecan_file$name)
@@ -147,29 +167,23 @@ server <- function(input, output, session) {
     },
     content = function(file) {
       req(filtered_tecan_data())
-      writexl::write_xlsx(filtered_tecan_data(), path = file)
+      write.xlsx(filtered_tecan_data(), file)
     }
   )
-  
-  
-  # 3. Growth Data Wrangling
+  # 3 growth data  
   growth_data <- reactiveVal(NULL)
   
   observeEvent(input$import_growth, {
     req(input$growth_file)
-    data <- CPDMTools::growth_data_prep(
-      file_path = input$growth_file$datapath,
-      imaging_equipment = input$imaging_type
-    )
+    data <- CPDMTools::growth_data_prep(file_path = input$growth_file$datapath, imaging_equipment = input$imaging_type)
+    
     growth_data(data)
-    time_choices <- unique(data$time)
+    time_choices <- unique(data$time) #time point
     default_selection <- if (is.null(input$tecan_file)) "No Treatment" else min(time_choices)
-    updateSelectInput(session, "time_point",
-                      choices = c("No Treatment", time_choices),
-                      selected = default_selection
-    )
+    updateSelectInput(session, "time_point", 
+                      choices = c("No Treatment", time_choices), 
+                      selected = default_selection)
   })
-  
   output$growth_data_table <- renderDT({
     req(growth_data())
     datatable(growth_data())
@@ -179,14 +193,16 @@ server <- function(input, output, session) {
     req(growth_data())
     data <- growth_data()
     selected_time <- as.numeric(input$time_point)
+    
     if (!is.na(selected_time) && input$time_point != "No Treatment") {
+      # treatment_period_yn update based on selected time point
       data$treatment_period_yn <- ifelse(data$time >= selected_time, "Yes", "No")
     } else {
       data$treatment_period_yn <- "No"
     }
     growth_data(data)
   })
-  
+  # download growth data dt  
   output$export_growth_data <- downloadHandler(
     filename = function() {
       original_name <- tools::file_path_sans_ext(input$growth_file$name)
@@ -194,34 +210,29 @@ server <- function(input, output, session) {
     },
     content = function(file) {
       req(growth_data())
-      writexl::write_xlsx(growth_data(), path = file)
+      write.xlsx(growth_data(), file)
     }
   )
+  ### 4 CTG image data 
   
-  
-  # 4. CTG Image Data Wrangling
   ctg_data <- reactiveVal(NULL)
-  
   observeEvent(input$import_ctg, {
     req(input$ctg_file)
     equipment <- input$ctg_type
     tryCatch({
-      data <- CPDMTools::ctg_prep(
-        file_path = input$ctg_file$datapath,
-        equipment = equipment
-      )
+      data <- CPDMTools::ctg_prep(file_path = input$ctg_file$datapath, equipment = equipment)
       ctg_data(data)
       
       if (equipment == "SpectraMAX iD3") {
+        #slid and select options for "SpectraMAX iD3" DATA
         updateSliderInput(session, "plate_number_range",
                           min = min(data$ctg_plate_number, na.rm = TRUE),
                           max = max(data$ctg_plate_number, na.rm = TRUE),
-                          value = c(min(data$ctg_plate_number, na.rm = TRUE), max(data$ctg_plate_number, na.rm = TRUE))
-        )
+                          value = c(min(data$ctg_plate_number, na.rm = TRUE), max(data$ctg_plate_number, na.rm = TRUE)))
+        
         updateSelectInput(session, "plate_name",
                           choices = c("All Plates", unique(data$ctg_plate_name)),
-                          selected = "All Plates"
-        )
+                          selected = "All Plates")
       }
     }, error = function(e) {
       showModal(modalDialog(
@@ -231,7 +242,7 @@ server <- function(input, output, session) {
       ))
     })
   })
-  
+  # Reactive expression for filtered CTG data
   filtered_ctg_data <- reactive({
     req(ctg_data())
     data <- ctg_data()
@@ -243,14 +254,15 @@ server <- function(input, output, session) {
         data <- data[data$ctg_plate_name == input$plate_name, ]
       }
     }
-    data
+    data 
   })
-  
+  #filtered DT
   output$ctg_data_table <- renderDT({
     req(filtered_ctg_data())
     datatable(filtered_ctg_data(), options = list(scrollX = TRUE))
   })
   
+  #export data
   output$export_ctg_data <- downloadHandler(
     filename = function() {
       original_name <- tools::file_path_sans_ext(input$ctg_file$name)
@@ -258,14 +270,11 @@ server <- function(input, output, session) {
     },
     content = function(file) {
       req(filtered_ctg_data())
-      writexl::write_xlsx(filtered_ctg_data(), path = file)
+      write.xlsx(filtered_ctg_data(), file)
     }
   )
-  
-  
-  # 5. Joined Data
+  ## 5 join table 
   joined_data <- reactiveVal(NULL)
-  
   observe({
     if (is.null(tecan_data())) {
       updateRadioButtons(session, "control_location", selected = "Well Annotation")
@@ -281,41 +290,44 @@ server <- function(input, output, session) {
       unique_values <- unique(data[[control_var]])
       choices <- c("None", unique_values)
       
+      # Default selection for media control
       default_media_control <- if (any(grepl("Media", unique_values, ignore.case = TRUE))) {
         "Media Only"
       } else {
         "None"
       }
-      
       updateSelectInput(session, "media_control", choices = choices, selected = default_media_control)
       updateSelectInput(session, "negative_control", choices = choices, selected = ifelse(any(grepl("DMSO 0.5%", unique_values)), "DMSO 0.5%", "None"))
       updateSelectInput(session, "positive_control", choices = choices, selected = ifelse(any(grepl("DMSO 10%", unique_values)), "DMSO 10%", "None"))
     }
   }
-  
+  # Observe changes in control_location to update dropdowns
   observeEvent(input$control_location, {
     update_control_dropdowns()
   })
-  
+  #joining datasets
+  #data type is currently selected
   observeEvent(input$join_datasets, {
     ctg_data_to_join <- if (input$data_file_type == "CTG") filtered_ctg_data() else NULL
     growth_data_to_join <- if (input$data_file_type == "Imaging") growth_data() else NULL
-    
+    #join datasets
     joined_data(plate_data_join(
       labguru_plate_data_frame = if (!is.null(filtered_data())) filtered_data() else NULL,
-      tecan_plate_data_frame   = if (!is.null(filtered_tecan_data())) filtered_tecan_data() else NULL,
-      growth_data_frame        = if (!is.null(growth_data())) growth_data() else NULL,
-      ctg_data_frame           = ctg_data_to_join
+      tecan_plate_data_frame = if (!is.null(filtered_tecan_data())) filtered_tecan_data() else NULL,
+      growth_data_frame = if (!is.null(growth_data())) growth_data() else NULL,
+      #ctg_data_frame = if (!is.null(filtered_ctg_data())) filtered_ctg_data() else NULL
+      ctg_data_frame = ctg_data_to_join
     ))
     update_control_dropdowns()
   })
-  
+  ##### transfer button
   output$showTransferButton <- reactive({
     data <- joined_data()
     !is.null(data) && any(grepl("-", data$well_annotation))
   })
   outputOptions(output, "showTransferButton", suspendWhenHidden = FALSE)
   
+  #well_annotate_transfer function
   observeEvent(input$transfer_annotations, {
     data <- joined_data()
     if (!is.null(data)) {
@@ -323,44 +335,36 @@ server <- function(input, output, session) {
       joined_data(data)
     }
   })
-  
   output$joined_data_table <- renderDT({
     req(joined_data())
     datatable(joined_data(), options = list(scrollX = TRUE))
   })
   
+  ####
   observeEvent(input$update_controls, {
     data <- joined_data()
     if (!is.null(data)) {
       control_var <- if (input$control_location == "Treatment Name") "treatment_name" else "well_annotation"
       if (control_var %in% names(data)) {
-        data$treatment_type <- ifelse(
-          data[[control_var]] == input$media_control, "Media Control",
-          ifelse(
-            data[[control_var]] == input$negative_control, "Negative Control",
-            ifelse(data[[control_var]] == input$positive_control, "Monotherapy", data$treatment_type)
-          )
-        )
-        
+        data$treatment_type <- ifelse(data[[control_var]] == input$media_control, "Media Control",
+                                      ifelse(data[[control_var]] == input$negative_control, "Negative Control",
+                                             ifelse(data[[control_var]] == input$positive_control, "Monotherapy", data$treatment_type)))
         if (input$positive_control_concentration == "Yes") {
+          # Identify the maximum concentration for the selected positive control
           max_concentration_data <- data %>%
             filter(data[[control_var]] == input$positive_control) %>%
             group_by(!!sym(control_var)) %>%
             summarize(max_concentration = max(concentration, na.rm = TRUE)) %>%
             ungroup()
-          
           data <- data %>%
             left_join(max_concentration_data, by = control_var) %>%
-            mutate(treatment_type = ifelse(
-              data[[control_var]] == input$positive_control & concentration == max_concentration,
-              "Positive Control", treatment_type
-            )) %>%
+            mutate(treatment_type = ifelse(data[[control_var]] == input$positive_control & concentration == max_concentration, 
+                                           "Positive Control", treatment_type)) %>%
             select(-max_concentration)
         } else {
+          #if "No" is selected, show all concentrations as Positive Control
           data <- data %>%
-            mutate(treatment_type = ifelse(
-              data[[control_var]] == input$positive_control, "Positive Control", treatment_type
-            ))
+            mutate(treatment_type = ifelse(data[[control_var]] == input$positive_control, "Positive Control", treatment_type))
         }
         joined_data(data)
       }
@@ -369,82 +373,115 @@ server <- function(input, output, session) {
   
   output$export_joined_data <- downloadHandler(
     filename = function() {
-      plate_num <- if (!is.null(input$labguru_file)) {
-        tolower(str_extract(basename(input$labguru_file$name), "(?i)^plate_(\\d+)"))
+      plate_num <- if (!is.null(input$labguru_file)) { 
+        tolower(str_extract(basename(input$labguru_file$name), "(?i)^plate_(\\d+)")) 
       } else {
         "tecan"
       }
-      labguru_name <- if (input$filter_type == "Labguru Model Name") {
+      labguru_name <- if (input$filter_type == "Labguru Model Name") { #labguru_name
         tolower(input$model_name)
       } else {
-        tolower(input$model_name_text)
+        tolower(input$model_name_text) #model_name_text #"custom_labguru_name" 
       }
+      #data type
       data_type <- if (input$data_file_type == "Imaging") "growth" else "ctg"
-      drugging_suffix <- if (input$drugging_type == "Synergy") "_syn" else ""
+      drugging_suffix <- if (input$drugging_type == "Synergy") "_syn" else "" # if tecal is Synergy, "_syn" suffix
+      #filename based on the conditions
       if (!is.null(plate_data())) {
-        if (input$tecan_data == "Yes") {
+        if (input$tecan_data == "Yes") { # if Labguru Plate Map is present
           paste0(plate_num, "_", labguru_name, "_", data_type, drugging_suffix, "_joined.xlsx")
         } else {
           paste0(plate_num, "_", labguru_name, "_", data_type, "_joined.xlsx")
         }
-      } else {
+      } else { #No Labguru Plate Map
         paste0("tecan_", data_type, drugging_suffix, "_joined.xlsx")
       }
     },
+    # metadata
     content = function(file) {
-      req(joined_data())
-      data_type <- if (input$data_file_type == "Imaging") "growth" else "ctg"
+      req(joined_data())  
+      data_type = if (input$data_file_type == "Imaging") "growth" else "ctg"
       metadata <- data.frame(
         data_type = data_type,
         growth_metric_units = if (data_type == "growth") input$growth_metric else NA,
-        time_units = input$time_unit,
+        #time_units = input$time_unit,
+        time_units = if (data_type == "growth") input$time_unit else NA,
         r_version = R.version.string,
         date = Sys.Date()
       )
+      #remove the growth_metric_units if data type is ctg 
       if (data_type != "growth") {
         metadata$growth_metric_units <- NULL
       }
-      writexl::write_xlsx(
-        list("Joined Data" = joined_data(), "Metadata" = metadata),
-        path = file
-      )
+      if (data_type != "growth") {
+        metadata$time_units <- NULL
+      }
+      
+      write_xlsx(list("Joined Data" = joined_data(), "Metadata" = metadata), path = file)
     }
   )
-  
-  
   ####### Data QC RShiny Server Logic #######
+  # download sample dataset
+  output$sample_dataset <- downloadHandler(
+    filename = function() {
+      "Sample_data.zip"
+    },
+    content = function(file) {
+      #base_dir <- normalizePath("..")
+      #source_files <- c("endpoint_assay_qc_input.xlsx", "growth_assay_qc_input.xlsx") # "Rshiny QC documents", 
+      #temp_dir <- tempdir()
+      source_files <- c(
+        "www/endpoint_assay_qc_input.xlsx",
+        "www/growth_assay_qc_input.xlsx"
+      )
+      temp_dir <- tempdir()
+      temp_files <- file.path(temp_dir, basename(source_files))
+      if (!all(file.copy(source_files, temp_files, overwrite = TRUE))) {
+        stop("Failed to copy files.")
+      }
+      
+      zip::zip(zipfile = file, files = temp_files, mode = "cherry-pick")
+    },
+    contentType = "application/zip"
+  )
+  
+
+  
+  ####
   
   rv <- reactiveValues(
-    input_data   = NULL,  # raw imported data (growth or CTG) for QC
-    updated_data = NULL,  # “locked‐in” data after rounding + palette
-    file_name    = NULL
+    input_data_qc   = NULL,  # raw imported data (growth or CTG) for QC
+    updated_data_qc = NULL,  # “locked‐in” data after rounding + palette
+    file_name_qc    = NULL,
+    rounded_input_data = NULL,
+    ctg_list = NULL
   )
   
   # 1. Reactive expression for rounded data
   rounded_data <- reactive({
-    req(rv$input_data)
-    if (!"concentration" %in% names(rv$input_data)) return(NULL)
+    req(rv$input_data_qc)
+    if (!"concentration" %in% names(rv$input_data_qc)) return(NULL)
     CPDMTools::round_concentration(
-      data_frame     = rv$input_data,
+      data_frame     = rv$input_data_qc,
       round_by       = input$round_by,
       use_nearest_10 = as.logical(input$use_nearest_10)
     )
   })
   
   # 2. Import handler for Growth Data (QC)
-  observeEvent(input$growth_file, {
-    req(input$growth_file)
-    ext <- tools::file_ext(input$growth_file$name)
-    rv$file_name <- tools::file_path_sans_ext(input$growth_file$name)
+  observeEvent(input$qc_growth_file, {
+    req(input$qc_growth_file)
+    ext <- tools::file_ext(input$qc_growth_file$name)
+    rv$file_name_qc <- tools::file_path_sans_ext(input$qc_growth_file$name)
     
     df <- switch(ext,
-                 csv  = read.csv(input$growth_file$datapath),
-                 txt  = read.delim(input$growth_file$datapath),
-                 xlsx = readxl::read_excel(input$growth_file$datapath)
+                 csv  = read.csv(input$qc_growth_file$datapath),
+                 txt  = read.delim(input$qc_growth_file$datapath),
+                 xlsx = readxl::read_excel(input$qc_growth_file$datapath)
     )
     
-    rv$input_data <- df
-    rv$updated_data <- NULL
+    rv$input_data_qc <- df
+    rv$updated_data_qc <- NULL
     
     if ("concentration" %in% names(df)) {
       showTab("main_tabs", "tab_rep_conc")
@@ -456,19 +493,19 @@ server <- function(input, output, session) {
   })
   
   # 3. Import handler for CTG Data (QC)
-  observeEvent(input$ctg_file, {
-    req(input$ctg_file)
-    ext <- tools::file_ext(input$ctg_file$name)
-    rv$file_name <- tools::file_path_sans_ext(input$ctg_file$name)
+  observeEvent(input$ctg_file_qc, {
+    req(input$ctg_file_qc)
+    ext <- tools::file_ext(input$ctg_file_qc$name)
+    rv$file_name_qc <- tools::file_path_sans_ext(input$ctg_file_qc$name)
     
     df <- switch(ext,
-                 csv  = read.csv(input$ctg_file$datapath),
-                 txt  = read.delim(input$ctg_file$datapath),
-                 xlsx = readxl::read_excel(input$ctg_file$datapath)
+                 csv  = read.csv(input$ctg_file_qc$datapath),
+                 txt  = read.delim(input$ctg_file_qc$datapath),
+                 xlsx = readxl::read_excel(input$ctg_file_qc$datapath)
     )
     
-    rv$input_data <- df
-    rv$updated_data <- NULL
+    rv$input_data_qc <- df
+    rv$updated_data_qc <- NULL
     
     showTab("main_tabs", "tab_rep_conc")
     showTab("main_tabs", "tab_ctg_controls")
@@ -491,7 +528,7 @@ server <- function(input, output, session) {
   observeEvent(input$lock_round, {
     rd <- rounded_data()
     req(rd)
-    rv$updated_data <- rd %>%
+    rv$updated_data_qc <- rd %>%
       mutate(
         outlier_auto_yn         = "No",
         outlier_auto_flag_reason = NA,
@@ -500,7 +537,7 @@ server <- function(input, output, session) {
       ) %>%
       CPDMTools::color_palette_mono()
     
-    if (input$data_type == "Growth Data") {
+    if (input$qc_data_type == "Growth Data") {
       showTab("main_tabs", "tab_growth_qc")
       showTab("main_tabs", "tab_updated")
       updateTabsetPanel(session, "main_tabs", selected = "tab_growth_qc")
@@ -514,8 +551,8 @@ server <- function(input, output, session) {
   
   # 6. Positive Control UI (QC)
   output$positive_control_ui <- renderUI({
-    req(rv$updated_data)
-    has_pos <- "Positive Control" %in% rv$updated_data$treatment_type
+    req(rv$updated_data_qc)
+    has_pos <- "Positive Control" %in% rv$updated_data_qc$treatment_type
     selectInput("use_positive_control", "Normalization Technique",
                 choices = c("Negative and Positive Control" = TRUE, "Negative Control Only" = FALSE),
                 selected = if (has_pos) TRUE else FALSE
@@ -524,9 +561,9 @@ server <- function(input, output, session) {
   
   # 7a. Static ggplot version (QC)
   output$ctg_control_ggplot <- renderPlot({
-    req(rv$updated_data)
+    req(rv$updated_data_qc)
     CPDMTools::ctg_qc_control_plot(
-      data_frame      = rv$updated_data,
+      data_frame      = rv$updated_data_qc,
       show_outlier    = input$show_outlier,
       make_interactive = FALSE
     )
@@ -534,9 +571,9 @@ server <- function(input, output, session) {
   
   # 7b. Interactive plotly version (QC)
   output$ctg_control_plotly <- renderPlotly({
-    req(rv$updated_data)
+    req(rv$updated_data_qc)
     CPDMTools::ctg_qc_control_plot(
-      data_frame      = rv$updated_data,
+      data_frame      = rv$updated_data_qc,
       show_outlier    = input$show_outlier,
       make_interactive = TRUE
     )
@@ -544,9 +581,9 @@ server <- function(input, output, session) {
   
   # 8. Normalize CTG Data (QC)
   observeEvent(input$normalize_ctg, {
-    req(rv$updated_data)
-    rv$updated_data <- CPDMTools::ctg_normalize(
-      data_frame           = rv$updated_data,
+    req(rv$updated_data_qc)
+    rv$updated_data_qc <- CPDMTools::ctg_normalize(
+      data_frame           = rv$updated_data_qc,
       use_positive_control = as.logical(input$use_positive_control)
     )
     showTab("main_tabs", "tab_ctg_qc")
@@ -557,13 +594,13 @@ server <- function(input, output, session) {
   # 9. Export Growth Data (QC)
   output$export_growth_data <- downloadHandler(
     filename = function() {
-      req(rv$file_name)
-      paste0(rv$file_name, "_qc.xlsx")
+      req(rv$file_name_qc)
+      paste0(rv$file_name_qc, "_qc.xlsx")
     },
     content = function(file) {
-      req(rv$updated_data)
+      req(rv$updated_data_qc)
       output_list <- CPDMTools::growth_qc_output(
-        data_frame            = rv$updated_data,
+        data_frame            = rv$updated_data_qc,
         outlier_manual_only   = as.logical(input$outlier_manual_only),
         growthcurveme         = input$growthcurveme,
         lgrscore              = input$lgrscore,
@@ -574,21 +611,23 @@ server <- function(input, output, session) {
   )
   
   # 10. Export CTG Data (QC)
-  output$export_ctg_data <- downloadHandler(
+  output$qc_export_ctg_data <- downloadHandler(
     filename = function() {
-      req(rv$file_name)
-      paste0(rv$file_name, "_qc.xlsx")
+      req(rv$file_name_qc)
+      paste0(rv$file_name_qc, "_qc.xlsx")
     },
     content = function(file) {
-      req(rv$updated_data)
+      req(rv$updated_data_qc)
       output_list <- CPDMTools::ctg_qc_output(
-        ctg_list            = list(rv$updated_data),
+        ctg_list            = list(rv$updated_data_qc),
         outlier_manual_only = as.logical(input$outlier_manual_only_ctg),
         prism               = input$prism_ctg
       )
       writexl::write_xlsx(output_list, path = file)
     }
   )
+  
+  
 }
 
 shinyApp(ui, server)

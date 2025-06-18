@@ -2,6 +2,29 @@ source("global.R")
 
 
 server <- function(input, output, session) {
+  
+  # download data wrangling sample dataset
+  output$data_wrangling_sample_dataset <- downloadHandler(
+    filename = function() {
+      "Sample_Data_Wrangling.zip"
+    },
+    content = function(file) {
+      source_directory <- "data_wrangling_sample_data"
+      old_wd <- getwd()
+      on.exit(setwd(old_wd), add = TRUE)
+      
+      #switch to the directory containing the folder to zip
+      parent_dir <- dirname(source_directory)
+      target_dir <- basename(source_directory)
+      setwd(parent_dir)
+      files_to_zip <- list.files(target_dir, recursive = TRUE)
+      
+      zip::zip(zipfile = file, files = file.path(target_dir, files_to_zip)) #creat zip folder
+    },
+    contentType = "application/zip"
+  )
+  
+  
   # 1 labguru
   plate_data <- reactiveVal(NULL)
   #function to get the max row and column values
@@ -421,15 +444,19 @@ server <- function(input, output, session) {
     }
   )
   ####### Data QC RShiny Server Logic #######
-  # download sample dataset
+  rv <- reactiveValues(
+    input_data_qc   = NULL,  #imported data(growth or CTG) for QC
+    updated_data = NULL,  # “locked‐in” data after rounding + palette
+    file_name_qc    = NULL,
+    concentrations_locked = FALSE,
+    normalized = FALSE
+  )
+  # Sample dataset download handler
   output$sample_dataset <- downloadHandler(
     filename = function() {
       "Sample_data.zip"
     },
     content = function(file) {
-      #base_dir <- normalizePath("..")
-      #source_files <- c("endpoint_assay_qc_input.xlsx", "growth_assay_qc_input.xlsx") # "Rshiny QC documents", 
-      #temp_dir <- tempdir()
       source_files <- c(
         "www/endpoint_assay_qc_input.xlsx",
         "www/growth_assay_qc_input.xlsx"
@@ -445,19 +472,7 @@ server <- function(input, output, session) {
     contentType = "application/zip"
   )
   
-
-  
-  ####
-  
-  rv <- reactiveValues(
-    input_data_qc   = NULL,  # raw imported data (growth or CTG) for QC
-    updated_data_qc = NULL,  # “locked‐in” data after rounding + palette
-    file_name_qc    = NULL,
-    rounded_input_data = NULL,
-    ctg_list = NULL
-  )
-  
-  # 1. Reactive expression for rounded data
+  # Reactive expression for rounded data
   rounded_data <- reactive({
     req(rv$input_data_qc)
     if (!"concentration" %in% names(rv$input_data_qc)) return(NULL)
@@ -468,7 +483,22 @@ server <- function(input, output, session) {
     )
   })
   
-  # 2. Import handler for Growth Data (QC)
+  # Observe changes in the data type selection
+  observeEvent(input$qc_data_type, {
+    if (input$qc_data_type == "Growth Data") {
+      showTab("main_tabs", "tab_growth_qc")
+      hideTab("main_tabs", "tab_ctg_controls")
+      hideTab("main_tabs", "tab_ctg_qc")
+      
+    } else if (input$qc_data_type == "End-Point Assay Data") {
+      showTab("main_tabs", "tab_ctg_controls")
+      showTab("main_tabs", "tab_ctg_qc")
+      hideTab("main_tabs", "tab_growth_qc")
+    }
+  })
+  
+  
+  # Import handler for Growth Data (QC)
   observeEvent(input$qc_growth_file, {
     req(input$qc_growth_file)
     ext <- tools::file_ext(input$qc_growth_file$name)
@@ -481,18 +511,28 @@ server <- function(input, output, session) {
     )
     
     rv$input_data_qc <- df
-    rv$updated_data_qc <- NULL
+    rv$updated_data <- NULL
+    
+    # Debugging: Print the column names and structure of the imported data
+    print(names(df))
+    print(str(df))
     
     if ("concentration" %in% names(df)) {
-      showTab("main_tabs", "tab_rep_conc")
-      updateTabsetPanel(session, "main_tabs", selected = "tab_rep_conc")
+      updateSelectInput(session, "concentration", choices = c("All Concentrations", unique(df$concentration)))
+      updateCheckboxInput(session, "concentration_detected", value = TRUE)
     } else {
-      updateTabsetPanel(session, "main_tabs", selected = "tab_growth_qc")
+      updateCheckboxInput(session, "concentration_detected", value = FALSE)
     }
-    hideTab("main_tabs", "tab_updated")
+    
+    updateSelectInput(session, "treatment_name_gd", choices = unique(df$treatment_name))
+    
+    
+    showTab("main_tabs", "tab_rep_conc")
+    updateTabsetPanel(session, "main_tabs", selected = "tab_rep_conc")
+    
   })
   
-  # 3. Import handler for CTG Data (QC)
+  # Import handler for CTG Data (QC)
   observeEvent(input$ctg_file_qc, {
     req(input$ctg_file_qc)
     ext <- tools::file_ext(input$ctg_file_qc$name)
@@ -505,16 +545,19 @@ server <- function(input, output, session) {
     )
     
     rv$input_data_qc <- df
-    rv$updated_data_qc <- NULL
+    rv$updated_data <- NULL
     
     showTab("main_tabs", "tab_rep_conc")
     showTab("main_tabs", "tab_ctg_controls")
     showTab("main_tabs", "tab_ctg_qc")
     hideTab("main_tabs", "tab_updated")
     updateTabsetPanel(session, "main_tabs", selected = "tab_rep_conc")
+    
+    # Update treatment name choices based on imported data
+    updateSelectInput(session, "treatment_name_qc", choices = unique(df$treatment_name[df$treatment_type == "Monotherapy"]))
   })
   
-  # 4. Replicates and Concentrations Table (QC)
+  # Replicates and Concentrations Table (QC)
   output$rep_conc_table <- renderDT({
     rd <- rounded_data()
     req(rd)
@@ -524,11 +567,11 @@ server <- function(input, output, session) {
     datatable(summary_table, options = list(pageLength = 10, scrollX = TRUE))
   })
   
-  # 5. Lock In Rounded Concentrations (QC)
+  # Replicates and Concentration Rounding Table
   observeEvent(input$lock_round, {
     rd <- rounded_data()
     req(rd)
-    rv$updated_data_qc <- rd %>%
+    rv$updated_data <- rd %>%
       mutate(
         outlier_auto_yn         = "No",
         outlier_auto_flag_reason = NA,
@@ -549,59 +592,200 @@ server <- function(input, output, session) {
     }
   })
   
-  # 6. Positive Control UI (QC)
+  # Positive Control UI (QC)
   output$positive_control_ui <- renderUI({
-    req(rv$updated_data_qc)
-    has_pos <- "Positive Control" %in% rv$updated_data_qc$treatment_type
+    req(rv$updated_data)
+    has_pos <- "Positive Control" %in% rv$updated_data$treatment_type
     selectInput("use_positive_control", "Normalization Technique",
                 choices = c("Negative and Positive Control" = TRUE, "Negative Control Only" = FALSE),
                 selected = if (has_pos) TRUE else FALSE
     )
   })
   
-  # 7a. Static ggplot version (QC)
+  # Static ggplot version (QC)
   output$ctg_control_ggplot <- renderPlot({
-    req(rv$updated_data_qc)
+    req(rv$updated_data)
     CPDMTools::ctg_qc_control_plot(
-      data_frame      = rv$updated_data_qc,
+      data_frame      = rv$updated_data,
       show_outlier    = input$show_outlier,
       make_interactive = FALSE
     )
   })
   
-  # 7b. Interactive plotly version (QC)
+  # Interactive plotly version (QC)
   output$ctg_control_plotly <- renderPlotly({
-    req(rv$updated_data_qc)
+    req(rv$updated_data)
     CPDMTools::ctg_qc_control_plot(
-      data_frame      = rv$updated_data_qc,
+      data_frame      = rv$updated_data,
       show_outlier    = input$show_outlier,
       make_interactive = TRUE
     )
   })
   
-  # 8. Normalize CTG Data (QC)
+  # Normalize CTG Data (QC)
   observeEvent(input$normalize_ctg, {
-    req(rv$updated_data_qc)
-    rv$updated_data_qc <- CPDMTools::ctg_normalize(
-      data_frame           = rv$updated_data_qc,
+    req(rv$updated_data)
+    rv$updated_data <- CPDMTools::ctg_normalize(
+      data_frame           = rv$updated_data,
       use_positive_control = as.logical(input$use_positive_control)
     )
+    rv$normalized <- TRUE
     showTab("main_tabs", "tab_ctg_qc")
     showTab("main_tabs", "tab_updated")
     updateTabsetPanel(session, "main_tabs", selected = "tab_ctg_qc")
   })
   
-  # 9. Export Growth Data (QC)
+  # Run/Update Outlier Detection
+  observeEvent(input$run_update_outlier_detection, {
+    req(rv$updated_data)
+    
+    if (!rv$normalized) {
+      showNotification("Please normalize the data before running outlier detection.", type = "error")
+      return()
+    }
+    #print(head(rv$updated_data))
+    
+    rv$updated_data <- CPDMTools::ctg_qc_mean_outlier(
+      ctg_data = rv$updated_data,
+      z_score_threshold = input$z_score_threshold
+    )
+    
+    #print(head(rv$updated_data))
+    
+    rv$ctg_list <- CPDMTools::dr4pl_qc_fit_loop(
+      ctg_data = rv$updated_data,
+      concentration_unit = input$concentration_unit,
+      method_init = input$method_init,
+      method_robust = input$method_robust,
+      lb_if_min_gt = input$lb_if_min_gt,
+      ub_if_max_lt = input$ub_if_max_lt
+    )
+    
+    #print ctg_list
+    #print(rv$ctg_list)
+    # Plot the data
+    output$ctg_plot <- renderPlot({
+      CPDMTools::ctg_qc_treat_plot(
+        ctg_list = rv$ctg_list,
+        treat_name = input$treatment_name_qc,
+        show_dose_response_curve = input$show_dose_response_curve,
+        make_interactive = FALSE
+      )
+    })
+    
+    output$ctg_plotly <- renderPlotly({
+      plotly_object <- CPDMTools::ctg_qc_treat_plot(
+        ctg_list = rv$ctg_list,
+        treat_name = input$treatment_name_qc,
+        show_dose_response_curve = input$show_dose_response_curve,
+        make_interactive = TRUE
+      )
+      plotly_object %>% layout(dragmode = "select") %>% config(displayModeBar = TRUE)
+    })
+  })
+  
+  output$updated_data_table <- renderDT({
+    datatable(rv$updated_data, options = list(pageLength = 10, scrollX = TRUE))
+  })
+  
+  #Mark as outlier
+  observeEvent(input$mark_as_outlier, {
+    req(rv$updated_data)
+    selected_points <- input$plot_brush #plot_brush
+    if (!is.null(selected_points)) {
+      rv$updated_data <- rv$updated_data %>%
+        mutate(outlier_manual_yn = ifelse(row_number() %in% selected_points$selected_, "Yes", outlier_manual_yn),
+               outlier_manual_flag_reason = ifelse(row_number() %in% selected_points$selected_,
+                                                   ifelse(input$outlier_reason == "Other", input$outlier_reason_other, input$outlier_reason),
+                                                   outlier_manual_flag_reason))
+    }
+  })
+  #Mark as not an outlier
+  observeEvent(input$mark_as_not_outlier, {
+    req(rv$updated_data)
+    selected_points <- input$plot_brush
+    if (!is.null(selected_points)) {
+      rv$updated_data <- rv$updated_data %>%
+        mutate(outlier_manual_yn = ifelse(row_number() %in% selected_points$selected_, "No", outlier_manual_yn))
+    }
+  })
+  
+  
+  #Run/Update Outlier Detection for Growth Data
+  renderGrowthPlot <- function() {
+    req(rv$updated_data)
+    filtered_data <- rv$updated_data %>%
+      dplyr::filter(treatment_name == input$treatment_name_gd) %>%
+      dplyr::filter(if (input$concentration != "All Concentrations") concentration == input$concentration else TRUE)
+    
+    output$growth_plot <- renderPlot({
+      CPDMTools::growth_plot_qc_mono(
+        data_frame = filtered_data,
+        treatment_name = input$treatment_name_gd,
+        show_outlier = input$show_outlier,
+        show_only_outlier_wells = input$show_only_outlier_wells,
+        make_interactive = FALSE,
+        growth_metric_name = input$growth_metric_name,
+        time_units = input$time_units,
+        n_x_axis_breaks = 12,
+        n_y_axis_breaks = 10
+      )
+    })
+    
+    output$growth_plotly <- renderPlotly({
+      plotly_object <- CPDMTools::growth_plot_qc_mono(
+        data_frame = filtered_data,
+        treatment_name = input$treatment_name_gd,
+        show_outlier = input$show_outlier,
+        show_only_outlier_wells = input$show_only_outlier_wells,
+        make_interactive = TRUE,
+        growth_metric_name = input$growth_metric_name,
+        time_units = input$time_units,
+        n_x_axis_breaks = 12,
+        n_y_axis_breaks = 10
+      )
+      plotly_object %>% layout(dragmode = "select") %>% config(displayModeBar = TRUE)
+    })
+  }
+  
+  observeEvent(input$treatment_name_gd, {
+    renderGrowthPlot()
+  })
+  
+  
+  observeEvent(input$run_update_outlier_detection_gd, {
+    req(rv$updated_data)
+    rv$updated_data$growth_metric <- as.numeric(rv$updated_data$growth_metric)
+    
+    rv$updated_data <- CPDMTools::loess_outlier_fit(
+      data_frame = rv$updated_data,
+      span_value = input$span_value,
+      residual_threshold = input$residual_threshold
+    )
+    
+    renderGrowthPlot()
+  })
+  
+  output$final_updated_data_table <- renderDT({
+    req(rv$updated_data)
+    if (input$qc_data_type == "End-Point Assay Data" && !is.null(rv$ctg_list)) {
+      datatable(rv$ctg_list[[1]], options = list(pageLength = 10, scrollX = TRUE))
+    } else {
+      datatable(rv$updated_data, options = list(pageLength = 10, scrollX = TRUE))
+    }
+  })
+  
+  # Export Growth Data (QC)
   output$export_growth_data <- downloadHandler(
     filename = function() {
       req(rv$file_name_qc)
       paste0(rv$file_name_qc, "_qc.xlsx")
     },
     content = function(file) {
-      req(rv$updated_data_qc)
+      req(rv$updated_data)
       output_list <- CPDMTools::growth_qc_output(
-        data_frame            = rv$updated_data_qc,
-        outlier_manual_only   = as.logical(input$outlier_manual_only),
+        data_frame            = rv$updated_data,
+        #outlier_manual_only   = as.logical(input$outlier_manual_only),
         growthcurveme         = input$growthcurveme,
         lgrscore              = input$lgrscore,
         prism                 = input$prism
@@ -610,17 +794,17 @@ server <- function(input, output, session) {
     }
   )
   
-  # 10. Export CTG Data (QC)
+  # Export CTG Data (QC)
   output$qc_export_ctg_data <- downloadHandler(
     filename = function() {
       req(rv$file_name_qc)
       paste0(rv$file_name_qc, "_qc.xlsx")
     },
     content = function(file) {
-      req(rv$updated_data_qc)
+      req(rv$updated_data)
       output_list <- CPDMTools::ctg_qc_output(
-        ctg_list            = list(rv$updated_data_qc),
-        outlier_manual_only = as.logical(input$outlier_manual_only_ctg),
+        ctg_list            = list(rv$updated_data),
+       # outlier_manual_only = as.logical(input$outlier_manual_only_ctg),
         prism               = input$prism_ctg
       )
       writexl::write_xlsx(output_list, path = file)

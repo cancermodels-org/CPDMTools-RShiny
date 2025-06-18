@@ -52,7 +52,8 @@ ui <- navbarPage(
                     condition = "input.tecan_data == 'Yes'",
                     radioButtons("drugging_type", "Drugging Type", choices = c("Monotherapy", "Synergy"), selected = "Monotherapy"),
                     fileInput("tecan_file", "Import Tecan Report File (.xlsx)"),
-                    actionButton("import_tecan", "Import File")
+                    actionButton("import_tecan", "Import File"),
+                    #downloadButton("data_wrangling_sample_dataset", "Download Sample Data"),
                   )
                 )
               ),
@@ -67,6 +68,10 @@ ui <- navbarPage(
                 box(
                   title = "Join Datasets", status = "primary", solidHeader = TRUE, width = 6,
                   actionButton("join_datasets", "Join Datasets")
+                ),
+                box(
+                  title = "Sample Datasets", status = "primary", solidHeader = TRUE, width = 6,
+                  downloadButton("data_wrangling_sample_dataset", "Download Sample Data")
                 )
               )
             ),
@@ -298,7 +303,6 @@ ui <- navbarPage(
             checkboxInput("growthcurveme", "GrowthCurveME", value = TRUE),
             checkboxInput("lgrscore", "LGRscore", value = TRUE),
             checkboxInput("prism", "GraphPad PRISM", value = TRUE),
-            # This export button stays visible but will do nothing until rv$updated_data exists
             downloadButton("export_growth_data", "Export Data")
           ),
           conditionalPanel(
@@ -329,7 +333,76 @@ ui <- navbarPage(
               actionButton("lock_round", "Lock In Rounded Concentrations"),
               DTOutput("rep_conc_table")
             ),
-            tabPanel("Growth Data QC", value = "tab_growth_qc"),
+            #tabPanel("Growth Data QC", value = "tab_growth_qc"),
+            tabPanel(
+              "Growth Data QC",
+              value = "tab_growth_qc",
+              ## 1 
+              fluidRow(
+                column(4,
+                       fluidRow(
+                         column(12,
+                                selectInput("treatment_name_gd", "Treatment Name", choices = NULL),
+                                conditionalPanel(
+                                  condition = "input.concentration_detected",
+                                  selectInput("concentration", "Concentration", choices = c("All Concentrations"))),
+                                numericInput("span_value", "Span Value", value = 0.3)
+                         ))),
+                
+                ## 2
+                column(4,
+                       fluidRow(
+                         column(12,
+                                checkboxInput("show_outlier", "Show Outliers", value = TRUE),
+                                checkboxInput("show_only_outlier_wells", "Show Only Outlier Wells", value = FALSE),
+                                checkboxInput("make_interactive", "Make Interactive", value = TRUE)
+                         ))),
+                
+                #3 
+                column(4,
+                       fluidRow(
+                         column(12,
+                                numericInput("residual_threshold", "Residual Threshold", value = 3),
+                                textInput("growth_metric_name", "Growth Metric Name", value = "growth_metric"),
+                                textInput("time_units", "Time Units", value = "hours")
+                         )))),
+              
+              
+              #######
+              actionButton("run_update_outlier_detection_gd", "Run/Update Outlier Detection"),
+              conditionalPanel(condition = "input.make_interactive == false",
+                               plotOutput("growth_plot", click = "plot_click", brush = "plot_brush")
+              ),
+              conditionalPanel(condition = "input.make_interactive == true",plotlyOutput("growth_plotly")),
+              
+              div(
+                style = "display: flex; align-items: center; gap: 10px; flex-wrap: wrap;",
+                
+                actionButton("mark_as_outlier", "Mark as Outlier"),
+                
+                selectInput(
+                  "outlier_reason", "Outlier Reason",
+                  choices = c("Use Outlier Auto Flag Reason", "Imaging Error", "Masking Error", "Technical Error",  "Other"),
+                  selected = "Use Outlier Auto Flag Reason"
+                ),
+                
+                conditionalPanel(
+                  condition = "input.outlier_reason == 'Other'",
+                  div(
+                    style = "margin: 0;",
+                    textInput("outlier_reason_other", "Specify Reason")
+                  )
+                ),
+                
+                actionButton("mark_as_not_outlier", "Mark as Not an Outlier")
+              ),
+              
+              DTOutput("selected_points_table")
+              
+              #####
+              
+            ),
+            
             tabPanel(
               "Controls QC and Normalization",
               value = "tab_ctg_controls",
@@ -346,8 +419,82 @@ ui <- navbarPage(
               ),
               actionButton("normalize_ctg", "Normalize Data")
             ),
-            tabPanel("End-Point Assay QC", value = "tab_ctg_qc"),
-            tabPanel("Updated Dataset", value = "tab_updated")
+            # End-Point Assay QC tab 
+            tabPanel(
+              "End-Point Assay QC", 
+              value = "tab_ctg_qc",
+              fluidRow(
+                column(4,
+                       fluidRow(
+                         column(12,
+                                selectInput("treatment_name_qc", "Treatment Name", choices = NULL),
+                                checkboxInput("show_outlier_qc", "Show Outliers", value = TRUE),
+                                checkboxInput("show_dose_response_curve", "Show Dose-Response Curve", value = TRUE),
+                                checkboxInput("make_interactive", "Make Interactive", value = TRUE)
+                         )
+                       )
+                ),
+                column(4,
+                       fluidRow(
+                         column(12,
+                                textInput("concentration_unit", "Concentration Unit", value = "µM"),
+                                selectInput("method_init", "Curve-Fitting Technique",
+                                            choices = c("Logistic" = "logistic", "Mead" = "mead"),
+                                            selected = "logistic"),
+                                selectInput("method_robust", "Outlier Detection Method",
+                                            choices = c("Squared" = "squared", "Absolute" = "absolute", "Huber" = "Huber", "Tukey" = "Tukey"),
+                                            selected = "Huber")
+                         )
+                       )
+                ),
+                column(4,
+                       fluidRow(
+                         column(12,
+                                sliderInput("lb_if_min_gt", "Curve Fitting Boundaries (Min)", min = -2.5, max = 2.5, value = 0.3, step = 0.1),
+                                sliderInput("ub_if_max_lt", "Curve Fitting Boundaries (Max)", min = -2.5, max = 2.5, value = 0.3, step = 0.1),
+                                numericInput("z_score_threshold", "Z-Score Threshold (Mean/SD Outlier Detection)", value = 3)
+                         )
+                       )
+                )
+              ),
+              div(style = "text-align: center;",
+                  actionButton("run_update_outlier_detection", "Run/Update Outlier Detection")),
+              conditionalPanel(
+                condition = "input.make_interactive == false",
+                plotOutput("ctg_plot", click = "plot_click", brush = "plot_brush")
+              ),
+              conditionalPanel(
+                condition = "input.make_interactive == true",
+                plotlyOutput("ctg_plotly")
+              ),
+              div(
+                style = "display: flex; align-items: center; gap: 10px;",
+                
+                actionButton("mark_as_outlier", "Mark as Outlier"),
+                
+                selectInput(
+                  "outlier_reason", "Outlier Reason",
+                  choices = c("Use Outlier Auto Flag Reason", "Edge-Effect", "Technical Error", "Other"),
+                  selected = "Use Outlier Auto Flag Reason"
+                ),
+                
+                conditionalPanel(
+                  condition = "input.outlier_reason == 'Other'",
+                  div(
+                    style = "margin: 0;",  # ensures the textInput aligns better in flex layout
+                    textInput("outlier_reason_other", "Specify Reason")
+                  )
+                ),
+                actionButton("mark_as_not_outlier", "Mark as Not an Outlier")
+              ),
+              
+              #DTOutput("updated_data_table")
+              tableOutput("updated_data_table")
+              
+            ),
+            ###tabPanel: Updated Dataset
+            tabPanel("Updated Dataset", value = "tab_updated",
+                     DTOutput("final_updated_data_table"))
           )
         )
       )

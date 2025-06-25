@@ -917,8 +917,16 @@ server <- function(input, output, session) {
     req(growth_data())
     req(run_growth_trigger())  #plot is rendered only after the "Run" button is clicked
     
-    selected_data <- growth_data()[growth_data()$treatment_name == input$treatment_name_growth, ]
+   # selected_data <- growth_data()[growth_data()$treatment_name == input$treatment_name_growth, ]
+   # treatment_type <- unique(selected_data$treatment_type)
+    if (input$show_controls) {
+      selected_data <- growth_data()
+    } else {
+      selected_data <- growth_data()[growth_data()$treatment_name == input$treatment_name_growth, ]
+    }
+    
     treatment_type <- unique(selected_data$treatment_type)
+    
     
     plot <- if ("Monotherapy" %in% treatment_type) {
       CPDMTools::growth_analysis_treat_plot(
@@ -957,9 +965,17 @@ server <- function(input, output, session) {
     req(growth_data())
     req(run_growth_trigger())
     
-    selected_data <- growth_data()[growth_data()$treatment_name == input$treatment_name_growth, ]
-    print(head(selected_data))
+   #selected_data <- growth_data()[growth_data()$treatment_name == input$treatment_name_growth, ]
+    #print(head(selected_data))
+   # treatment_type <- unique(selected_data$treatment_type)
+    if (input$show_controls) {
+      selected_data <- growth_data()
+    } else {
+      selected_data <- growth_data()[growth_data()$treatment_name == input$treatment_name_growth, ]
+    }
+    
     treatment_type <- unique(selected_data$treatment_type)
+    
     
     plot <- if ("Monotherapy" %in% treatment_type) {
       CPDMTools::growth_analysis_treat_plot(

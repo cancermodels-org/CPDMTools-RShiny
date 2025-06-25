@@ -255,15 +255,8 @@ ui <- navbarPage(
               
             )
             
-          ))))), #Data wrangling interface end here 
+          ))))), 
   
-  # TabPanel 2 placeholder for QC Rshiny 
-  # tabPanel(
-  #   "Data QC RShiny",
-  #   fluidPage(
-  #     titlePanel("Data QC RShiny Content")
-  #   )
-  # ),
   # Tab 2: Data QC RShiny (Integrated UI from previous “CPDM Data Quality Control App”)
   tabPanel(
     "Data QC RShiny",
@@ -501,10 +494,181 @@ ui <- navbarPage(
     )
   ),
   
-  # TabPanel 3 placeholder for Graphs and CTG analysis 
+  # TabPanel 3 Data analysis 
   tabPanel(
-    "Data Analysis RShiny"
-  ),
+    "Data Analysis",
+      fluidPage(
+        titlePanel(""),
+        sidebarLayout(
+          sidebarPanel(
+            radioButtons("data_type_data_analysis", "Data Type", choices = c("Growth Data Analysis", "End-Point Assay Data Analysis"), selected = "Growth Data Analysis"),
+            
+            conditionalPanel(
+              condition = "input.data_type_data_analysis == 'Growth Data Analysis'",
+              fileInput("growth_data_file", "Import Growth Data Analysis (.xlsx, .csv, .txt)"),
+              textInput("growth_metric_name", "Growth Metric Name", value = "Confluency"),
+              conditionalPanel(
+                condition = "output.has_concentration_column",
+                selectInput("concentration_unit_data_analysis", "Concentration Units", choices = c("M", "mM", "µM", "nM", "pM", "fM"), selected = "µM")
+              ),
+              textInput("time_unit_data_analysis", "Time Unit", value = "hours"),
+              actionButton("run_growth", "Run")
+            ),
+            
+            conditionalPanel(
+              condition = "input.data_type_data_analysis == 'End-Point Assay Data Analysis'",
+              fileInput("endpoint_data_file", "Import End-Point Assay Data Analysis (.xlsx, .csv, .txt)"),
+              selectInput("readout", "Assay Readout", choices = c("Activity", "Inhibition"), selected = "Activity"),
+              selectInput("method_init_endpoint", "Curve-Fitting Technique", choices = c("Logistic", "Mead"), selected = "Logistic"),
+              sliderInput("lb_if_min_gt_endpoint", "Curve Fitting Boundaries Min", min = -2.5, max = 2.5, value = 0.3, step = 0.1),
+              sliderInput("ub_if_max_lt_endpoint", "Curve Fitting Boundaries Max", min = -2.5, max = 2.5, value = 0.8, step = 0.1),
+              selectInput("concentration_unit_data_analysis", "Concentration Units", choices = c("M", "mM", "µM", "nM", "pM", "fM"), selected = "µM"),
+              textInput("y_axis_title", "Normalized Value Name", value = "Normalized Value"),
+              sliderInput("activity_threshold", "Activity Threshold", min = 0, max = 100, value = 10, step = 1),
+              numericInput("slope_threshold", "Slope Threshold", value = 0.1, min = 0),
+              actionButton("run_endpoint", "Run")
+            ),
+            
+            downloadButton("download_data_analysis", "Download Sample Data")
+          ),
+          
+          mainPanel(
+            tabsetPanel(
+              id = "tabs",
+              selected = "Growth Analysis Plots",  # Default selected tab
+              
+              tabPanel("Growth Analysis Plots",
+                       fluidRow(
+                         column(4,
+                                fluidRow(
+                                  column(12,
+                                         selectInput("treatment_name_growth", "Treatment Name", choices = NULL),
+                                         checkboxInput("show_controls", "Show Controls", value = FALSE),
+                                         checkboxInput("make_interactive_data_analysis", "Make Interactive", value = FALSE),
+                                         selectInput("display_metric", "Display Metric", 
+                                                     choices = c("Wells" = "wells",
+                                                                 "Means +/- SE" = "mean_se",
+                                                                 "Mean Only" = "mean",
+                                                                 "Median Only" = "median"),
+                                                     selected = "wells")
+                                  )
+                                )
+                         ),
+                         column(4,
+                                fluidRow(
+                                  column(12,
+                                         numericInput("min_x_value", "Minimum X Value", value = NA),
+                                         numericInput("max_x_value", "Maximum X Value", value = NA),
+                                         numericInput("min_y_value", "Minimum Y Value", value = 0),
+                                         numericInput("max_y_value", "Maximum Y Value", value = NA)
+                                  )
+                                )
+                         ),
+                         column(4,
+                                fluidRow(
+                                  column(12,
+                                         sliderInput("n_x_axis_breaks_growthdata", "Number of X Axis Breaks", min = 3, max = 16, value = 8),
+                                         sliderInput("n_y_axis_breaks_growthdata", "Number of Y Axis Breaks", min = 3, max = 16, value = 6)
+                                  )
+                                )
+                         )
+                       ),
+                       uiOutput("plot_ui")
+              ),
+              
+              tabPanel("End-Point Assay Results",
+                       selectInput("result_figure", "Result Figure for All Treatments", choices = c("Table", "Dose-Response Plot", "Relative IC50 Forrest Plot", "Drug Sensitivity Score Bar Chart"), selected = "Table"),
+                       
+                       conditionalPanel(
+                         condition = "input.result_figure == 'Table'",
+                         uiOutput("result_table")
+                       ),
+                       
+                       conditionalPanel(
+                         condition = "input.result_figure == 'Dose-Response Plot'",
+                         selectInput("x_scale", "X-Axis Scale", choices = c("Logarithmic", "Standard"), selected = "Logarithmic"),
+                         selectInput("display_type", "Display Type", choices = c("Replicates", "Means +/- SE"), selected = "Means +/- SE"),
+                         numericInput("min_y_value_end", "Minimum Y Value", value = 0),
+                         numericInput("max_y_value_end", "Maximum Y Value", value = 1.5),
+                         plotOutput("dose_response_plot")
+                       ),
+                       
+                       conditionalPanel(
+                         condition = "input.result_figure == 'Relative IC50 Forrest Plot'",
+                         selectInput("x_scale_ic50", "X-Axis Scale", choices = c("Logarithmic", "Standard"), selected = "Logarithmic"),
+                         plotOutput("ic50_forest_plot")
+                       ),
+                       
+                       conditionalPanel(
+                         condition = "input.result_figure == 'Drug Sensitivity Score Bar Chart'",
+                         numericInput("score_label_size", "Score Label Value", value = 4),
+                         plotOutput("dss_bar_plot")
+                       )
+              ),
+              
+              tabPanel("End-Point Assay Plots",
+                       fluidRow(
+                         column(4,
+                                fluidRow(
+                                  column(12,
+                                         selectInput("treatment_name_end", "Treatment Name", choices = NULL),
+                                         selectInput("dose_plot_sub_title", "Sub-Title Type", choices = c("None", "Relative IC50", "DSS3", "Relative IC50 and DSS3"), selected = "Relative IC50 and DSS3"),
+                                         checkboxInput("make_interactive_end", "Make Interactive", value = FALSE)
+                                  )
+                                )
+                         ),
+                         column(4,
+                                fluidRow(
+                                  column(12,
+                                         selectInput("x_scale_end", "X-Axis Scale", choices = c("Logarithmic", "Standard"), selected = "Logarithmic"),
+                                         selectInput("display_type_end", "Display Type", choices = c("Replicates", "Means +/- SE"), selected = "Means +/- SE"),
+                                         sliderInput("n_x_axis_breaks_end", "Number of X Axis Breaks", min = 3, max = 16, value = 6)
+                                  )
+                                )
+                         ),
+                         column(4,
+                                fluidRow(
+                                  column(12,
+                                         numericInput("min_y_value_end2", "Minimum Y Value", value = 0),
+                                         numericInput("max_y_value_end2", "Maximum Y Value", value = 1.5),
+                                         sliderInput("n_y_axis_breaks_end", "Number of Y Axis Breaks", min = 3, max = 16, value = 7)
+                                  )
+                                )
+                         )
+                       ),
+                       uiOutput("endpoint_plot_ui")
+              ),
+              
+              tabPanel("Export and Report",
+                       fluidRow(
+                         column(6, 
+                                textInput("report_title_dt", "Report Title", value = "Endpoint Assay Results")
+                         ),
+                         column(6,
+                                textInput("report_sub_title_dt", "Report Sub-Title", value = "End-Point Assay Analysis Report")
+                         )
+                       ),
+                       fluidRow(
+                         column(6, 
+                                numericInput("fig_width_in_dt", "Width:", value = 7.5)
+                         ),
+                         column(6,
+                                numericInput("fig_height_in_dt", "Height:", value = 5.5)
+                         )
+                       ),
+                       br(),
+                       div(
+                         style = "text-align: center;", downloadButton("export_results", "Export Results and Figures")
+                       )
+              )
+            )
+          )
+        )
+        
+      )
+    
+    
+    ),
   
   # placeholder for discription, About and info page
   tabPanel(

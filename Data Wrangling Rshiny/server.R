@@ -443,7 +443,16 @@ server <- function(input, output, session) {
       write_xlsx(list("Joined Data" = joined_data(), "Metadata" = metadata), path = file)
     }
   )
-  ####### Data QC RShiny Server Logic #######
+  
+  
+  
+  
+  ################################################# 
+  #                                               #
+  #   Data QC RShiny Server Logic START HERE      #
+  #                                               #
+  ################################################ 
+  
   rv <- reactiveValues(
     input_data_qc   = NULL,  #imported data(growth or CTG) for QC
     updated_data = NULL,  # “locked‐in” data after rounding + palette
@@ -451,10 +460,10 @@ server <- function(input, output, session) {
     concentrations_locked = FALSE,
     normalized = FALSE
   )
-  # Sample dataset download handler
+  # Sample dataset download
   output$sample_dataset <- downloadHandler(
     filename = function() {
-      "Sample_data.zip"
+      "Data_quality_sample_data.zip"
     },
     content = function(file) {
       source_files <- c(
@@ -472,7 +481,7 @@ server <- function(input, output, session) {
     contentType = "application/zip"
   )
   
-  # Reactive expression for rounded data
+  #Reactive expression for rounded data
   rounded_data <- reactive({
     req(rv$input_data_qc)
     if (!"concentration" %in% names(rv$input_data_qc)) return(NULL)
@@ -483,7 +492,7 @@ server <- function(input, output, session) {
     )
   })
   
-  # Observe changes in the data type selection
+  #Observe changes in the data type selection
   observeEvent(input$qc_data_type, {
     if (input$qc_data_type == "Growth Data") {
       showTab("main_tabs", "tab_growth_qc")
@@ -494,11 +503,11 @@ server <- function(input, output, session) {
       showTab("main_tabs", "tab_ctg_controls")
       showTab("main_tabs", "tab_ctg_qc")
       hideTab("main_tabs", "tab_growth_qc")
+      
     }
   })
   
-  
-  # Import handler for Growth Data (QC)
+  #Import handler for Growth Data (QC)
   observeEvent(input$qc_growth_file, {
     req(input$qc_growth_file)
     ext <- tools::file_ext(input$qc_growth_file$name)
@@ -513,9 +522,6 @@ server <- function(input, output, session) {
     rv$input_data_qc <- df
     rv$updated_data <- NULL
     
-    # Debugging: Print the column names and structure of the imported data
-    print(names(df))
-    print(str(df))
     
     if ("concentration" %in% names(df)) {
       updateSelectInput(session, "concentration", choices = c("All Concentrations", unique(df$concentration)))
@@ -529,7 +535,7 @@ server <- function(input, output, session) {
     
     showTab("main_tabs", "tab_rep_conc")
     updateTabsetPanel(session, "main_tabs", selected = "tab_rep_conc")
-    
+   
   })
   
   # Import handler for CTG Data (QC)
@@ -557,7 +563,7 @@ server <- function(input, output, session) {
     updateSelectInput(session, "treatment_name_qc", choices = unique(df$treatment_name[df$treatment_type == "Monotherapy"]))
   })
   
-  # Replicates and Concentrations Table (QC)
+  #Replicates and Concentrations Table (QC)
   output$rep_conc_table <- renderDT({
     rd <- rounded_data()
     req(rd)
@@ -567,7 +573,7 @@ server <- function(input, output, session) {
     datatable(summary_table, options = list(pageLength = 10, scrollX = TRUE))
   })
   
-  # Replicates and Concentration Rounding Table
+  #Replicates and Concentration Rounding Table
   observeEvent(input$lock_round, {
     rd <- rounded_data()
     req(rd)
@@ -680,7 +686,8 @@ server <- function(input, output, session) {
         show_dose_response_curve = input$show_dose_response_curve,
         make_interactive = TRUE
       )
-      plotly_object %>% layout(dragmode = "select") %>% config(displayModeBar = TRUE)
+      plotly_object %>% layout(width = 750, height = 550, dragmode = "select") %>% config(displayModeBar = TRUE)
+      
     })
   })
   
@@ -744,7 +751,7 @@ server <- function(input, output, session) {
         n_x_axis_breaks = 12,
         n_y_axis_breaks = 10
       )
-      plotly_object %>% layout(dragmode = "select") %>% config(displayModeBar = TRUE)
+      plotly_object %>% layout(width = 800, height = 600, dragmode = "select") %>% config(displayModeBar = TRUE)
     })
   }
   
@@ -812,6 +819,338 @@ server <- function(input, output, session) {
   )
   
   
+  ###################################  
+  #                                 #
+  #   Data analysis START HERE      #
+  #                                 #
+  ################################### 
+  
+  observeEvent(input$data_type_data_analysis, {
+    updateTabsetPanel(session, "tabs", selected = ifelse(input$data_type_data_analysis == "End-Point Assay Data Analysis", "End-Point Assay Results", "Growth Analysis Plots"))
+  })
+  
+  # download sample dataset
+  output$download_data_analysis <- downloadHandler(
+    filename = function() {
+      "Data_analysis_sample_data.zip"
+    },
+    content = function(file) {
+      source_files <- c(
+        "Data_analysis_Rshiny/growth_assay_analysis_input.xlsx",
+        "Data_analysis_Rshiny/endpoint_assay_analysis_input.xlsx"
+      )
+      temp_dir <- tempdir()
+      temp_files <- file.path(temp_dir, basename(source_files))
+      if (!all(file.copy(source_files, temp_files, overwrite = TRUE))) {
+        stop("Failed to copy files.")
+      }
+      
+      zip::zip(zipfile = file, files = temp_files, mode = "cherry-pick")
+    },
+    contentType = "application/zip"
+  )
+  
+  growth_data <- reactiveVal(NULL)
+  endpoint_data <- reactiveVal(NULL)
+  ctg_list <- reactiveVal(NULL)
+  
+  observeEvent(input$data_type_data_analysis, {
+    # Reset reactive values when data type changes
+    if (input$data_type_data_analysis == "Growth Data Analysis") {
+      endpoint_data(NULL)
+      ctg_list(NULL)
+    } else if (input$data_type_data_analysis == "End-Point Assay Data Analysis") {
+      growth_data(NULL)
+    }
+  })
+  
+  observeEvent(input$growth_data_file, {
+    req(input$growth_data_file)
+    
+    # Read Growth Data Analysis
+    file_ext <- tools::file_ext(input$growth_data_file$name)
+    data <- switch(file_ext,
+                   "xlsx" = read_excel(input$growth_data_file$datapath),
+                   "csv" = read.csv(input$growth_data_file$datapath),
+                   "txt" = read.csv(input$growth_data_file$datapath),
+                   {
+                     showNotification("Unsupported file type", type = "error")
+                     return(NULL)
+                   })
+    
+    required_columns <- c("well", "treatment_name", "treatment_type", "time", "growth_metric")
+    missing_columns <- setdiff(required_columns, colnames(data))
+    if (length(missing_columns) > 0) {
+      showNotification(paste("Missing required columns:", paste(missing_columns, collapse = ", ")), type = "error")
+      return(NULL)
+    }
+    
+    #color_palette_mono to add the color column
+    data <- CPDMTools::color_palette_mono(data)
+    
+    growth_data(data)
+    updateSelectInput(session, "treatment_name_growth", choices = unique(data$treatment_name))
+    
+    #checking concentration column
+    output$has_concentration_column <- reactive({
+      "concentration" %in% colnames(data)
+    })
+    outputOptions(output, "has_concentration_column", suspendWhenHidden = FALSE)
+  })
+  
+  # Reactive value
+  run_growth_trigger <- reactiveVal(FALSE)
+  observeEvent(input$run_growth, {
+    print("Run button clicked")
+    run_growth_trigger(TRUE)
+  })
+  
+  output$plot_ui <- renderUI({
+    if (input$make_interactive_data_analysis) {
+      plotlyOutput("growth_data_analysis_plotly", width = "800px", height = "600px")
+    } else {
+      plotOutput("growth_data_analysis_plot", width = "800px", height = "600px")
+    }
+  })
+  
+  output$growth_data_analysis_plot <- renderPlot({
+    req(growth_data())
+    req(run_growth_trigger())  #plot is rendered only after the "Run" button is clicked
+    
+    selected_data <- growth_data()[growth_data()$treatment_name == input$treatment_name_growth, ]
+    treatment_type <- unique(selected_data$treatment_type)
+    
+    plot <- if ("Monotherapy" %in% treatment_type) {
+      CPDMTools::growth_analysis_treat_plot(
+        data_frame = selected_data,
+        treatment_name = input$treatment_name_growth, 
+        show_controls = input$show_controls,
+        display_metric = input$display_metric,
+        growth_metric_name = input$growth_metric_name,
+        time_units = input$time_unit_data_analysis,
+        concentration_units = input$concentration_unit_data_analysis,
+        n_x_axis_breaks = input$n_x_axis_breaks_growthdata,
+        n_y_axis_breaks = input$n_y_axis_breaks_growthdata,
+        x_limits = c(input$min_x_value, input$max_x_value),
+        y_limits = c(input$min_y_value, input$max_y_value)
+      )
+    } else if (treatment_type %in% c("Media Control", "Negative Control", "Positive Control")){
+      CPDMTools::growth_analysis_control_plot(
+        data_frame = selected_data,
+        treatment_name = input$treatment_name_growth,
+        display_metric = input$display_metric,
+        growth_metric_name = input$growth_metric_name,
+        time_units = input$time_unit_data_analysis,
+        concentration_units = input$concentration_unit_data_analysis,
+        n_x_axis_breaks = input$n_x_axis_breaks_growthdata,
+        n_y_axis_breaks = input$n_y_axis_breaks_growthdata,
+        x_limits = c(input$min_x_value, input$max_x_value),
+        y_limits = c(input$min_y_value, input$max_y_value)
+      )
+    }
+    
+    print(class(plot))
+    plot
+  })
+  
+  output$growth_data_analysis_plotly <- renderPlotly({
+    req(growth_data())
+    req(run_growth_trigger())
+    
+    selected_data <- growth_data()[growth_data()$treatment_name == input$treatment_name_growth, ]
+    print(head(selected_data))
+    treatment_type <- unique(selected_data$treatment_type)
+    
+    plot <- if ("Monotherapy" %in% treatment_type) {
+      CPDMTools::growth_analysis_treat_plot(
+        data_frame = selected_data,
+        treatment_name = input$treatment_name_growth, 
+        show_controls = input$show_controls,
+        display_metric = input$display_metric,
+        growth_metric_name = input$growth_metric_name,
+        time_units = input$time_unit_data_analysis,
+        concentration_units = input$concentration_unit_data_analysis,
+        n_x_axis_breaks = input$n_x_axis_breaks_growthdata,
+        n_y_axis_breaks = input$n_y_axis_breaks_growthdata,
+        x_limits = c(input$min_x_value, input$max_x_value),
+        y_limits = c(input$min_y_value, input$max_y_value)
+      )
+    } else if (treatment_type %in% c("Media Control", "Negative Control", "Positive Control")) {
+      CPDMTools::growth_analysis_control_plot(
+        data_frame = selected_data,
+        treatment_name = input$treatment_name_growth,
+        display_metric = input$display_metric,
+        growth_metric_name = input$growth_metric_name,
+        time_units = input$time_unit_data_analysis,
+        concentration_units = input$concentration_unit_data_analysis,
+        n_x_axis_breaks = input$n_x_axis_breaks_growthdata,
+        n_y_axis_breaks = input$n_y_axis_breaks_growthdata,
+        x_limits = c(input$min_x_value, input$max_x_value),
+        y_limits = c(input$min_y_value, input$max_y_value)
+      )
+    }
+    
+    print(class(plot))
+    plotly::ggplotly(plot)
+  })
+
+  #  end-point assay START HERE
+  observeEvent(input$endpoint_data_file, {
+    req(input$endpoint_data_file)
+    
+    file_ext <- tools::file_ext(input$endpoint_data_file$name)
+    data_endpoint <- switch(file_ext,
+                            "xlsx" = readxl::read_excel(input$endpoint_data_file$datapath),
+                            "csv" = read.csv(input$endpoint_data_file$datapath),
+                            "txt" = read.csv(input$endpoint_data_file$datapath),
+                            {
+                              showNotification("Unsupported file type", type = "error")
+                              return(NULL)
+                            })
+    
+    required_columns <- c("well", "treatment_name", "treatment_type", "concentration", "value_norm")
+    missing_columns <- setdiff(required_columns, colnames(data_endpoint))
+    if (length(missing_columns) > 0) {
+      showNotification(paste("Missing required columns:", paste(missing_columns, collapse = ", ")), type = "error")
+      return(NULL)
+    }
+    
+    endpoint_data(data_endpoint)
+    updateSelectInput(session, "treatment_name_end", choices = unique(data_endpoint$treatment_name[data_endpoint$treatment_type == "Monotherapy"]))
+  })
+  
+  observeEvent(input$run_endpoint, {
+    req(endpoint_data())
+    
+    method_init <- tolower(input$method_init_endpoint)
+    
+    if (!method_init %in% c("logistic", "mead")) {
+      showNotification("Invalid initialization method. Choose 'logistic' or 'Mead'.", type = "warning")
+      return(NULL)
+    }
+    
+    ctg_list(CPDMTools::dr4pl_fit_loop(
+      data_frame = endpoint_data(),
+      concentration_unit = input$concentration_unit_data_analysis,
+      method_init = method_init,
+      method_robust = "squared",
+      lb_if_min_gt = input$lb_if_min_gt_endpoint, 
+      ub_if_max_lt = input$ub_if_max_lt_endpoint,
+      readout = input$readout,
+      activity_threshold = input$activity_threshold,
+      dss_type = 3,
+      slope_threshold = input$slope_threshold,
+      max_dss = 100
+    ))
+  })
+  
+  ####### end point result
+  output$result_table <- renderUI({
+    req(ctg_list())
+    Results_tbl <- CPDMTools::ctg_summary_table_all(ctg_list = ctg_list(), show = "both")
+    Results_tbl <- flextable::fontsize(Results_tbl, size = 12, part = "body")
+    Results_tbl <- flextable::fontsize(Results_tbl, size = 14, part = "header")
+    
+    #flextable to HTML
+    html_table <- flextable::htmltools_value(Results_tbl, ft.align = "center")
+    htmltools::HTML(as.character(html_table))
+  })
+  
+  # End-Point Assay result - Plots
+  
+  output$dose_response_plot <- renderPlot({
+    req(ctg_list())
+    dose_plot_all <- CPDMTools::ctg_treat_plot_all(
+      ctg_list = ctg_list(),
+      x_scale = ifelse(input$x_scale == "Logarithmic", "log", "standard"),
+      display_type = ifelse(input$display_type == "Replicates", "points", "se_bars"),
+      y_axis_title = input$y_axis_title,
+      y_limits = c(input$min_y_value_end, input$max_y_value_end)
+    )
+    dose_plot_all
+  }, width = 750, height = 550)
+  
+  output$ic50_forest_plot <- renderPlot({
+    req(ctg_list())
+    ic50_forest <- CPDMTools::ctg_ic50_forest_plot(
+      ctg_list = ctg_list(),
+      x_scale = ifelse(input$x_scale_ic50 == "Logarithmic", "log", "standard")
+    )
+    ic50_forest
+  }, width = 750, height = 550)
+  
+  output$dss_bar_plot <- renderPlot({
+    req(ctg_list())
+    dss_bar_plot <- CPDMTools::ctg_dss_barplot(
+      ctg_list = ctg_list(),
+      score_label_size = input$score_label_size
+    )
+    dss_bar_plot
+  }, width = 750, height = 550)
+  
+  
+  ####### end point plot
+  output$ind_plot <- renderPlot({
+    req(ctg_list())
+    ind_plot <- CPDMTools::ctg_treat_plot_ind(
+      ctg_list = ctg_list(),
+      treat_name = input$treatment_name_end,
+      x_scale = ifelse(input$x_scale_end == "Logarithmic", "log", "standard"),
+      sub_title = switch(input$dose_plot_sub_title,
+                         "None" = "none",
+                         "Relative IC50" = "ic50",
+                         "DSS3" = "dss3",
+                         "Relative IC50 and DSS3" = "both"),
+      make_interactive = input$make_interactive_end,
+      display_type = ifelse(input$display_type_end == "Replicates", "points", "se_bars"),
+      y_axis_title = input$y_axis_title,
+      y_limits = c(input$min_y_value_end2, input$max_y_value_end2),
+      n_x_axis_breaks = input$n_x_axis_breaks_end,
+      n_y_axis_breaks = input$n_y_axis_breaks_end
+    )
+    ind_plot
+  })
+  
+  output$endpoint_plot_ui <- renderUI({
+    if (input$make_interactive_end) {
+      plotlyOutput("ind_plotly", width = "750px", height = "550px")
+    } else {
+      plotOutput("ind_plot", width = "750px", height = "550px")
+    }
+  })
+  
+  output$ind_plotly <- renderPlotly({
+    req(ctg_list())
+    ind_plot <- CPDMTools::ctg_treat_plot_ind(
+      ctg_list = ctg_list(),
+      treat_name = input$treatment_name_end,
+      x_scale = ifelse(input$x_scale_end == "Logarithmic", "log", "standard"),
+      sub_title = switch(input$dose_plot_sub_title,
+                         "None" = "none",
+                         "Relative IC50" = "ic50",
+                         "DSS3" = "dss3",
+                         "Relative IC50 and DSS3" = "both"),
+      make_interactive = TRUE,
+      display_type = ifelse(input$display_type_end == "Replicates", "points", "se_bars"),
+      y_axis_title = input$y_axis_title,
+      y_limits = c(input$min_y_value_end2, input$max_y_value_end2),
+      n_x_axis_breaks = input$n_x_axis_breaks_end,
+      n_y_axis_breaks = input$n_y_axis_breaks_end
+    )
+    plotly::ggplotly(ind_plot)
+  })
+  
+  output$ind_tbl <- renderUI({
+    req(ctg_list())
+    ind_tbl <- CPDMTools::ctg_summary_table_ind(
+      ctg_list = ctg_list(),
+      treat_name = input$treatment_name_end
+    )
+    html_table <- flextable::htmltools_value(ind_tbl, ft.align = "center")
+    htmltools::HTML(as.character(html_table))
+  })
+  
+
 }
 
 shinyApp(ui, server)

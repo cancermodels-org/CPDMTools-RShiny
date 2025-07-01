@@ -296,7 +296,7 @@ ui <- navbarPage(
             checkboxInput("growthcurveme", "GrowthCurveME", value = TRUE),
             checkboxInput("lgrscore", "LGRscore", value = TRUE),
             checkboxInput("prism", "GraphPad PRISM", value = TRUE),
-            downloadButton("export_growth_data", "Export Data")
+            downloadButton("export_growth_data_analsyis", "Export Data")
           ),
           conditionalPanel(
             condition = "input.qc_data_type == 'End-Point Assay Data'",
@@ -520,8 +520,14 @@ ui <- navbarPage(
               fileInput("endpoint_data_file", "Import End-Point Assay Data Analysis (.xlsx, .csv, .txt)"),
               selectInput("readout", "Assay Readout", choices = c("Activity", "Inhibition"), selected = "Activity"),
               selectInput("method_init_endpoint", "Curve-Fitting Technique", choices = c("Logistic", "Mead"), selected = "Logistic"),
-              sliderInput("lb_if_min_gt_endpoint", "Curve Fitting Boundaries Min", min = -2.5, max = 2.5, value = 0.3, step = 0.1),
-              sliderInput("ub_if_max_lt_endpoint", "Curve Fitting Boundaries Max", min = -2.5, max = 2.5, value = 0.8, step = 0.1),
+              fluidRow(
+                column(6,
+                      sliderInput("lb_if_min_gt_endpoint", "Curve Fitting Boundaries Min", min = -2.5, max = 2.5, value = 0.3, step = 0.1)
+               ),
+               column(6,
+                      sliderInput("ub_if_max_lt_endpoint", "Curve Fitting Boundaries Max", min = -2.5, max = 2.5, value = 0.8, step = 0.1)
+               )
+             ),
               selectInput("concentration_unit_data_analysis", "Concentration Units", choices = c("M", "mM", "µM", "nM", "pM", "fM"), selected = "µM"),
               textInput("y_axis_title", "Normalized Value Name", value = "Normalized Value"),
               sliderInput("activity_threshold", "Activity Threshold", min = 0, max = 100, value = 10, step = 1),
@@ -540,37 +546,44 @@ ui <- navbarPage(
               tabPanel("Growth Analysis Plots",
                        fluidRow(
                          column(4,
+                                selectInput("treatment_name_growth", "Treatment Name", choices = NULL),
+                                selectInput("display_metric", "Display Metric", 
+                                            choices = c("Wells" = "wells",
+                                                        "Means +/- SE" = "mean_se",
+                                                        "Mean Only" = "mean",
+                                                        "Median Only" = "median"),
+                                            selected = "wells"),
                                 fluidRow(
-                                  column(12,
-                                         selectInput("treatment_name_growth", "Treatment Name", choices = NULL),
-                                         checkboxInput("show_controls", "Show Controls", value = FALSE),
-                                         checkboxInput("make_interactive_data_analysis", "Make Interactive", value = FALSE),
-                                         selectInput("display_metric", "Display Metric", 
-                                                     choices = c("Wells" = "wells",
-                                                                 "Means +/- SE" = "mean_se",
-                                                                 "Mean Only" = "mean",
-                                                                 "Median Only" = "median"),
-                                                     selected = "wells")
+                                  column(6,
+                                         checkboxInput("show_controls", "Show Controls", value = TRUE)
+                                  ),
+                                  column(6,
+                                         checkboxInput("make_interactive_data_analysis", "Make Interactive", value = FALSE)
+                                  )
+                                )
+                         ),
+                         
+                         column(4,
+                                fluidRow(
+                                  column(6,
+                                         numericInput("min_x_value", "Min X Value", value = NA)
+                                  ),
+                                  column(6,
+                                         numericInput("max_x_value", "Max X Value", value = NA)
+                                  )
+                                ),
+                                fluidRow(
+                                  column(6,
+                                         numericInput("min_y_value", "Min Y Value", value = 0)
+                                  ),
+                                  column(6,
+                                         numericInput("max_y_value", "Max Y Value", value = NA)
                                   )
                                 )
                          ),
                          column(4,
-                                fluidRow(
-                                  column(12,
-                                         numericInput("min_x_value", "Minimum X Value", value = NA),
-                                         numericInput("max_x_value", "Maximum X Value", value = NA),
-                                         numericInput("min_y_value", "Minimum Y Value", value = 0),
-                                         numericInput("max_y_value", "Maximum Y Value", value = NA)
-                                  )
-                                )
-                         ),
-                         column(4,
-                                fluidRow(
-                                  column(12,
-                                         sliderInput("n_x_axis_breaks_growthdata", "Number of X Axis Breaks", min = 3, max = 16, value = 8),
-                                         sliderInput("n_y_axis_breaks_growthdata", "Number of Y Axis Breaks", min = 3, max = 16, value = 6)
-                                  )
-                                )
+                                sliderInput("n_x_axis_breaks_growthdata", "X Axis Breaks", min = 3, max = 16, value = 8),
+                                sliderInput("n_y_axis_breaks_growthdata", "Y Axis Breaks", min = 3, max = 16, value = 6)
                          )
                        ),
                        uiOutput("plot_ui")
@@ -621,20 +634,30 @@ ui <- navbarPage(
                                 fluidRow(
                                   column(12,
                                          selectInput("x_scale_end", "X-Axis Scale", choices = c("Logarithmic", "Standard"), selected = "Logarithmic"),
-                                         selectInput("display_type_end", "Display Type", choices = c("Replicates", "Means +/- SE"), selected = "Means +/- SE"),
-                                         sliderInput("n_x_axis_breaks_end", "Number of X Axis Breaks", min = 3, max = 16, value = 6)
+                                         selectInput("display_type_end", "Display Type", choices = c("Replicates", "Means +/- SE"), selected = "Means +/- SE")
+                                         
                                   )
                                 )
                          ),
                          column(4,
                                 fluidRow(
-                                  column(12,
-                                         numericInput("min_y_value_end2", "Minimum Y Value", value = 0),
-                                         numericInput("max_y_value_end2", "Maximum Y Value", value = 1.5),
+                                  column(6,
+                                         numericInput("min_y_value_end2", "Min Y Value", value = 0)
+                                  ),
+                                  column(6,
+                                         numericInput("max_y_value_end2", "Max Y Value", value = 1.5)
+                                  )
+                                ),
+                                fluidRow(
+                                  column(6,
                                          sliderInput("n_y_axis_breaks_end", "Number of Y Axis Breaks", min = 3, max = 16, value = 7)
+                                  ), 
+                                  column(6,
+                                         sliderInput("n_x_axis_breaks_end", "Number of X Axis Breaks", min = 3, max = 16, value = 6)
                                   )
                                 )
                          )
+                         
                        ),
                        uiOutput("endpoint_plot_ui")
               ),
@@ -642,10 +665,10 @@ ui <- navbarPage(
               tabPanel("Export and Report",
                        fluidRow(
                          column(6, 
-                                textInput("report_title_dt", "Report Title", value = "Endpoint Assay Results")
+                                textInput("report_title_dt", "Report Title", value = "Growth Assay Results")
                          ),
                          column(6,
-                                textInput("report_sub_title_dt", "Report Sub-Title", value = "End-Point Assay Analysis Report")
+                                textInput("report_sub_title_dt", "Report Sub-Title", value = "Growth Assay Analysis Report")
                          )
                        ),
                        fluidRow(

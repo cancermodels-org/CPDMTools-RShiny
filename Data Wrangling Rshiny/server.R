@@ -1,6 +1,7 @@
 source("global.R")
 
 
+
 server <- function(input, output, session) {
   
   # download data wrangling sample dataset
@@ -783,7 +784,7 @@ server <- function(input, output, session) {
   })
   
   # Export Growth Data (QC)
-  output$export_growth_data <- downloadHandler(
+  output$export_growth_data_analsyis <- downloadHandler(
     filename = function() {
       req(rv$file_name_qc)
       paste0(rv$file_name_qc, "_qc.xlsx")
@@ -917,8 +918,9 @@ server <- function(input, output, session) {
     req(growth_data())
     req(run_growth_trigger())  #plot is rendered only after the "Run" button is clicked
     
-   # selected_data <- growth_data()[growth_data()$treatment_name == input$treatment_name_growth, ]
-   # treatment_type <- unique(selected_data$treatment_type)
+    # selected_data <- growth_data()[growth_data()$treatment_name == input$treatment_name_growth, ]
+    # treatment_type <- unique(selected_data$treatment_type)
+    # 
     if (input$show_controls) {
       selected_data <- growth_data()
     } else {
@@ -965,9 +967,6 @@ server <- function(input, output, session) {
     req(growth_data())
     req(run_growth_trigger())
     
-   #selected_data <- growth_data()[growth_data()$treatment_name == input$treatment_name_growth, ]
-    #print(head(selected_data))
-   # treatment_type <- unique(selected_data$treatment_type)
     if (input$show_controls) {
       selected_data <- growth_data()
     } else {
@@ -975,7 +974,6 @@ server <- function(input, output, session) {
     }
     
     treatment_type <- unique(selected_data$treatment_type)
-    
     
     plot <- if ("Monotherapy" %in% treatment_type) {
       CPDMTools::growth_analysis_treat_plot(
@@ -1165,6 +1163,234 @@ server <- function(input, output, session) {
     html_table <- flextable::htmltools_value(ind_tbl, ft.align = "center")
     htmltools::HTML(as.character(html_table))
   })
+  
+  ##################################### 
+  #                                   #
+  #         Export data               #
+  #                                   #
+  #####################################  
+  
+  # update report title and subtitle
+  
+  observeEvent(input$growth_data_file, {
+    req(input$growth_data_file)
+    #file_name <- tools::file_path_sans_ext(input$growth_data_file$name)
+    default_title <- paste("Growth Assay Results")
+    default_subtitle <- paste("Growth Assay Analysis Report")
+    updateTextInput(session, "report_title_dt", value = default_title)
+    updateTextInput(session, "report_sub_title_dt", value = default_subtitle)
+  })
+  
+  observeEvent(input$endpoint_data_file, {
+    req(input$endpoint_data_file)
+    #file_name <- tools::file_path_sans_ext(input$endpoint_data_file$name)
+    default_title <- paste("Endpoint Assay Results")
+    default_subtitle <- paste("End-Point Assay Analysis Report")
+    updateTextInput(session, "report_title_dt", value = default_title)
+    updateTextInput(session, "report_sub_title_dt", value = default_subtitle)
+  })
+  
+  output$export_results <- downloadHandler(
+    filename = function() {
+      if (input$data_type_data_analysis == "Growth Data Analysis") {
+        paste0("Growth_Data_Report_", Sys.Date(), ".zip")
+      } else {
+        paste0("End_Point_Assay_Report_", Sys.Date(), ".zip")
+      }
+    },
+    content = function(file) {
+      temp_dir <- tempdir()
+      report_dir <- file.path(temp_dir, "report")
+      
+      # Clean any existing report directory
+      if (dir.exists(report_dir)) unlink(report_dir, recursive = TRUE)
+      
+      # Create new directories
+      dir.create(report_dir, recursive = TRUE)
+      png_dir <- file.path(report_dir, "PNG")
+      svg_dir <- file.path(report_dir, "SVG")
+      dir.create(png_dir)
+      dir.create(svg_dir)
+      
+      if (input$data_type_data_analysis == "Growth Data Analysis") {
+        # Render Growth Data Report
+        growth_analysis_rmd_path <- "growth_analysis_rmarkdown_data_analysis_.Rmd"
+        pdf_filename <- "Growth_Data_Report.pdf"
+        
+        rmarkdown::render(
+          input = growth_analysis_rmd_path,
+          output_file = pdf_filename,
+          output_dir = report_dir,
+          params = list(
+            file_name = input$growth_data_file$datapath,
+            report_title = input$report_title_dt,
+            report_sub_title = input$report_sub_title_dt,
+            display_metric = input$display_metric,
+            growth_metric_name = input$growth_metric_name,
+            time_units = input$time_unit_data_analysis,
+            concentration_unit = input$concentration_unit_data_analysis,
+            n_x_axis_breaks = input$n_x_axis_breaks_growthdata,
+            n_y_axis_breaks = input$n_y_axis_breaks_growthdata
+          )
+        )
+        # Use the full dataset — don't filter by selected treatment!
+        all_data <- growth_data()
+        
+        # Unique treatments to export (Monotherapy + Control)
+        treatments <- unique(all_data$treatment_name)
+        
+        # Loop through each treatment
+        for (treatment in treatments) {
+          selected_data <- all_data[all_data$treatment_name == treatment, ]
+          treatment_type <- unique(selected_data$treatment_type)
+          sanitized_name <- gsub("[^a-zA-Z0-9]", "_", treatment)
+          
+          # Generate the plot with full dataset to include controls globally
+          plot <- if ("Monotherapy" %in% treatment_type) {
+            CPDMTools::growth_analysis_treat_plot(
+              data_frame = all_data,  # ✅ Pass full dataset
+              treatment_name = treatment,
+              show_controls = TRUE,  # ✅ Always TRUE here
+              display_metric = input$display_metric,
+              growth_metric_name = input$growth_metric_name,
+              time_units = input$time_unit_data_analysis,
+              concentration_units = input$concentration_unit_data_analysis,
+              n_x_axis_breaks = input$n_x_axis_breaks_growthdata,
+              n_y_axis_breaks = input$n_y_axis_breaks_growthdata,
+              x_limits = c(input$min_x_value, input$max_x_value),
+              y_limits = c(input$min_y_value, input$max_y_value)
+            )
+          } else if (treatment_type %in% c("Media Control", "Negative Control", "Positive Control", "Vehicle Control")) {
+            CPDMTools::growth_analysis_control_plot(
+              data_frame = all_data,  # ✅ Full dataset again
+              treatment_name = treatment,
+              display_metric = input$display_metric,
+              growth_metric_name = input$growth_metric_name,
+              time_units = input$time_unit_data_analysis,
+              concentration_units = input$concentration_unit_data_analysis,
+              n_x_axis_breaks = input$n_x_axis_breaks_growthdata,
+              n_y_axis_breaks = input$n_y_axis_breaks_growthdata,
+              x_limits = c(input$min_x_value, input$max_x_value),
+              y_limits = c(input$min_y_value, input$max_y_value)
+            )
+          } else {
+            next  # Skip anything unexpected
+          }
+          
+          # Save plots
+          ggsave(file.path(png_dir, paste0(sanitized_name, "_plot.png")),
+                 plot = plot, width = input$fig_width_in_dt, height = input$fig_height_in_dt)
+          ggsave(file.path(svg_dir, paste0(sanitized_name, "_plot.svg")),
+                 plot = plot, width = input$fig_width_in_dt, height = input$fig_height_in_dt, device = "svg")
+        }
+        
+      } else {
+        # Render End-Point Assay Report
+        
+        
+        endpoint_assay_rmd_path <- "endpoint_assay_analysis_rmarkdown_data_analysis_.Rmd"
+        pdf_filename <- "End_Point_Assay_Report.pdf"
+        
+        rmarkdown::render(
+          input = endpoint_assay_rmd_path,
+          output_file = pdf_filename,
+          output_dir = report_dir,
+          params = list(
+            file_name = input$endpoint_data_file$datapath,
+            report_title = input$report_title_dt,
+            report_sub_title = input$report_sub_title_dt,
+            concentration_unit = input$concentration_unit_data_analysis,
+            method_init = input$method_init,
+            lb_if_min_gt = input$lb_if_min_gt_endpoint,
+            ub_if_max_lt = input$ub_if_max_lt_endpoint,
+            readout = input$readout,
+            activity_threshold = input$activity_threshold,
+            slope_threshold = input$slope_threshold,
+            score_label_size = input$score_label_size,
+            x_scale = ifelse(input$x_scale == "Logarithmic", "log", "standard"),
+            display_type = ifelse(input$display_type == "Replicates", "points", "se_bars"),
+            dose_plot_sub_title = input$dose_plot_sub_title,
+            y_axis_title = input$y_axis_title,
+            fig_width_in = input$fig_width_in_dt,
+            fig_height_in = input$fig_height_in_dt
+          )
+        )
+        
+        # Export ctg_list to Excel
+        excel_file_path <- file.path(report_dir, "results.xlsx")
+        writexl::write_xlsx(ctg_list(), excel_file_path)
+        
+        # Generate plots and save them
+        endpoint_treatments <- unique(endpoint_data()$treatment_name[endpoint_data()$treatment_type == "Monotherapy"])
+        for (treatment in endpoint_treatments) {
+          sanitized_treatment <- gsub("[^a-zA-Z0-9]", "_", treatment)
+          
+          ind_plot <- CPDMTools::ctg_treat_plot_ind(
+            ctg_list = ctg_list(),
+            treat_name = treatment,
+            x_scale = ifelse(input$x_scale_end == "Logarithmic", "log", "standard"),
+            sub_title = switch(input$dose_plot_sub_title,
+                               "None" = "none",
+                               "Relative IC50" = "ic50",
+                               "DSS3" = "dss3",
+                               "Relative IC50 and DSS3" = "both"),
+            make_interactive = FALSE,
+            display_type = ifelse(input$display_type_end == "Replicates", "points", "se_bars"),
+            y_axis_title = input$y_axis_title,
+            y_limits = c(input$min_y_value_end2, input$max_y_value_end2),
+            n_x_axis_breaks = input$n_x_axis_breaks_end,
+            n_y_axis_breaks = input$n_y_axis_breaks_end
+          )
+          
+          ggsave(file.path(png_dir, paste0(sanitized_treatment, "_plot.png")),
+                 plot = ind_plot, width = input$fig_width_in_dt, height = input$fig_height_in_dt)
+          ggsave(file.path(svg_dir, paste0(sanitized_treatment, "_plot.svg")),
+                 plot = ind_plot, width = input$fig_width_in_dt, height = input$fig_height_in_dt, device = "svg")
+        }
+        
+        dose_plot_all <- CPDMTools::ctg_treat_plot_all(
+          ctg_list = ctg_list(),
+          x_scale = ifelse(input$x_scale == "Logarithmic", "log", "standard"),
+          display_type = ifelse(input$display_type == "Replicates", "points", "se_bars"),
+          y_axis_title = input$y_axis_title,
+          y_limits = c(input$min_y_value_end, input$max_y_value_end)
+        )
+        
+        ic50_forest <- CPDMTools::ctg_ic50_forest_plot(
+          ctg_list = ctg_list(),
+          x_scale = ifelse(input$x_scale_ic50 == "Logarithmic", "log", "standard")
+        )
+        
+        dss_bar_plot <- CPDMTools::ctg_dss_barplot(
+          ctg_list = ctg_list(),
+          score_label_size = input$score_label_size
+        )
+        
+        # Save summary plots
+        ggsave(file.path(png_dir, "dose_plot_all.png"), plot = dose_plot_all,
+               width = input$fig_width_in_dt, height = input$fig_height_in_dt)
+        ggsave(file.path(svg_dir, "dose_plot_all.svg"), plot = dose_plot_all,
+               width = input$fig_width_in_dt, height = input$fig_height_in_dt, device = "svg")
+        
+        ggsave(file.path(png_dir, "ic50_forest_plot.png"), plot = ic50_forest,
+               width = input$fig_width_in_dt, height = input$fig_height_in_dt)
+        ggsave(file.path(svg_dir, "ic50_forest_plot.svg"), plot = ic50_forest,
+               width = input$fig_width_in_dt, height = input$fig_height_in_dt, device = "svg")
+        
+        ggsave(file.path(png_dir, "dss_bar_plot.png"), plot = dss_bar_plot,
+               width = input$fig_width_in_dt, height = input$fig_height_in_dt)
+        ggsave(file.path(svg_dir, "dss_bar_plot.svg"), plot = dss_bar_plot,
+               width = input$fig_width_in_dt, height = input$fig_height_in_dt, device = "svg")
+      }
+      
+      old_wd <- setwd(report_dir)
+      on.exit(setwd(old_wd), add = TRUE)
+      
+      zip::zip(zipfile = file, files = list.files(".", recursive = TRUE))
+      
+    },
+    contentType = "application/zip"
+  )
   
 
 }

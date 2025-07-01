@@ -539,7 +539,7 @@ server <- function(input, output, session) {
    
   })
   
-  # Import handler for CTG Data (QC)
+  #CTG Data (QC)
   observeEvent(input$ctg_file_qc, {
     req(input$ctg_file_qc)
     ext <- tools::file_ext(input$ctg_file_qc$name)
@@ -560,7 +560,7 @@ server <- function(input, output, session) {
     hideTab("main_tabs", "tab_updated")
     updateTabsetPanel(session, "main_tabs", selected = "tab_rep_conc")
     
-    # Update treatment name choices based on imported data
+    #treatment name choices based on imported data
     updateSelectInput(session, "treatment_name_qc", choices = unique(df$treatment_name[df$treatment_type == "Monotherapy"]))
   })
   
@@ -619,6 +619,14 @@ server <- function(input, output, session) {
     )
   })
   
+  output$data_norm <- renderDT({
+    req(rv$updated_data)
+    #print(str(rv$updated_data))  
+    #print(input$plot_brush)      
+    norm_plot_brush <- brushedPoints(rv$updated_data, input$plot_brush)
+    DT::datatable(norm_plot_brush,options = list(scrollX = TRUE,pageLength = 10, lengthMenu = c(5, 10, 25, 50)))
+  })
+  
   # Interactive plotly version (QC)
   output$ctg_control_plotly <- renderPlotly({
     req(rv$updated_data)
@@ -642,6 +650,46 @@ server <- function(input, output, session) {
     updateTabsetPanel(session, "main_tabs", selected = "tab_ctg_qc")
   })
   
+  observeEvent(input$mark_as_outlier, {
+    req(rv$updated_data, input$plot_brush)
+    
+    selected_df <- brushedPoints(rv$updated_data, input$plot_brush)
+    req(nrow(selected_df) > 0)
+    
+    selected_ids <- selected_df$well  
+    reason_input <- input$outlier_reason
+    
+    rv$updated_data <- rv$updated_data %>%
+      dplyr::mutate(
+        outlier_manual_yn = dplyr::if_else(well %in% selected_ids, "Yes", outlier_manual_yn),
+        outlier_manual_flag_reason = dplyr::if_else(
+          well %in% selected_ids,
+          dplyr::case_when(
+            reason_input == "Use Outlier Auto Flag Reason" ~ as.character(outlier_auto_flag_reason),
+            reason_input == "Other" ~ input$outlier_reason_other,
+            TRUE ~ reason_input
+          ),
+          outlier_manual_flag_reason
+        )
+      )
+  })
+  
+  observeEvent(input$mark_as_not_outlier, {
+    req(rv$updated_data, input$plot_brush)
+    
+    selected_df <- brushedPoints(rv$updated_data, input$plot_brush)
+    req(nrow(selected_df) > 0)
+    
+    selected_ids <- selected_df$well
+    
+    rv$updated_data <- rv$updated_data %>%
+      dplyr::mutate(
+        outlier_manual_yn = dplyr::if_else(well %in% selected_ids, "No", outlier_manual_yn),
+        outlier_manual_flag_reason = dplyr::if_else(well %in% selected_ids,
+                                                    NA_character_, outlier_manual_flag_reason)
+      )
+  })
+  
   # Run/Update Outlier Detection
   observeEvent(input$run_update_outlier_detection, {
     req(rv$updated_data)
@@ -650,15 +698,11 @@ server <- function(input, output, session) {
       showNotification("Please normalize the data before running outlier detection.", type = "error")
       return()
     }
-    #print(head(rv$updated_data))
-    
     rv$updated_data <- CPDMTools::ctg_qc_mean_outlier(
       ctg_data = rv$updated_data,
       z_score_threshold = input$z_score_threshold
     )
-    
     #print(head(rv$updated_data))
-    
     rv$ctg_list <- CPDMTools::dr4pl_qc_fit_loop(
       ctg_data = rv$updated_data,
       concentration_unit = input$concentration_unit,
@@ -691,31 +735,86 @@ server <- function(input, output, session) {
       
     })
   })
+  ### dt for brush or selected points in plot 
+  output$data_norm_end_assay <- renderDT({
+    req(rv$updated_data, input$treatment_name_qc, input$plot_brush)
+    
+    df <- rv$updated_data
+    if (!"log10_concentration" %in% names(df)) {
+      df$log10_concentration <- log10(df$concentration)
+    }
+    
+    df_filtered <- df %>%
+      dplyr::filter(treatment_name == input$treatment_name_qc)
+    
+    selected_df <- brushedPoints(df_filtered, input$plot_brush, xvar = "log10_concentration")
+    datatable(selected_df, options = list(scrollX = TRUE, pageLength = 10))
+  })
   
   output$updated_data_table <- renderDT({
     datatable(rv$updated_data, options = list(pageLength = 10, scrollX = TRUE))
   })
   
   #Mark as outlier
-  observeEvent(input$mark_as_outlier, {
-    req(rv$updated_data)
-    selected_points <- input$plot_brush #plot_brush
-    if (!is.null(selected_points)) {
-      rv$updated_data <- rv$updated_data %>%
-        mutate(outlier_manual_yn = ifelse(row_number() %in% selected_points$selected_, "Yes", outlier_manual_yn),
-               outlier_manual_flag_reason = ifelse(row_number() %in% selected_points$selected_,
-                                                   ifelse(input$outlier_reason == "Other", input$outlier_reason_other, input$outlier_reason),
-                                                   outlier_manual_flag_reason))
+  observeEvent(input$mark_as_outlier_end, {
+    req(rv$updated_data, input$plot_brush, input$treatment_name_qc)
+    
+    df <- rv$updated_data
+    
+    # Ensure log10_concentration exists
+    if (!"log10_concentration" %in% names(df)) {
+      df$log10_concentration <- log10(df$concentration)
     }
+    
+    #Restrict to selected treatment only
+    df_filtered <- df %>% dplyr::filter(treatment_name == input$treatment_name_qc)
+    
+    # Only brushed points from that subset
+    selected_df <- brushedPoints(df_filtered, input$plot_brush, xvar = "log10_concentration")
+    req(nrow(selected_df) > 0)
+    
+    selected_ids <- selected_df$well
+    reason_input <- input$outlier_reason
+    
+    # Apply updates only to selected wells (regardless of treatment, safe due to prior filter)
+    rv$updated_data <- rv$updated_data %>%
+      dplyr::mutate(
+        outlier_manual_yn = dplyr::if_else(well %in% selected_ids, "Yes", outlier_manual_yn),
+        outlier_manual_flag_reason = dplyr::if_else(
+          well %in% selected_ids,
+          dplyr::case_when(
+            reason_input == "Use Outlier Auto Flag Reason" ~ as.character(outlier_auto_flag_reason),
+            reason_input == "Other" ~ input$outlier_reason_other,
+            TRUE ~ reason_input
+          ),
+          outlier_manual_flag_reason
+        )
+      )
   })
-  #Mark as not an outlier
-  observeEvent(input$mark_as_not_outlier, {
-    req(rv$updated_data)
-    selected_points <- input$plot_brush
-    if (!is.null(selected_points)) {
-      rv$updated_data <- rv$updated_data %>%
-        mutate(outlier_manual_yn = ifelse(row_number() %in% selected_points$selected_, "No", outlier_manual_yn))
+  
+  observeEvent(input$mark_as_not_outlier_end, {
+    req(rv$updated_data, input$plot_brush, input$treatment_name_qc)
+    
+    df <- rv$updated_data
+    
+    if (!"log10_concentration" %in% names(df)) {
+      df$log10_concentration <- log10(df$concentration)
     }
+    
+    df_filtered <- df %>% dplyr::filter(treatment_name == input$treatment_name_qc)
+    
+    selected_df <- brushedPoints(df_filtered, input$plot_brush, xvar = "log10_concentration")
+    req(nrow(selected_df) > 0)
+    
+    selected_ids <- selected_df$well
+    
+    rv$updated_data <- rv$updated_data %>%
+      dplyr::mutate(
+        outlier_manual_yn = dplyr::if_else(well %in% selected_ids, "No", outlier_manual_yn),
+        outlier_manual_flag_reason = dplyr::if_else(
+          well %in% selected_ids, NA_character_, outlier_manual_flag_reason
+        )
+      )
   })
   
   
@@ -774,14 +873,66 @@ server <- function(input, output, session) {
     renderGrowthPlot()
   })
   
-  output$final_updated_data_table <- renderDT({
-    req(rv$updated_data)
-    if (input$qc_data_type == "End-Point Assay Data" && !is.null(rv$ctg_list)) {
-      datatable(rv$ctg_list[[1]], options = list(pageLength = 10, scrollX = TRUE))
-    } else {
-      datatable(rv$updated_data, options = list(pageLength = 10, scrollX = TRUE))
-    }
+  output$growth_data_brush <- renderDT({
+    req(rv$updated_data, input$treatment_name_gd)
+    
+    df_filtered <- rv$updated_data %>%
+      dplyr::filter(treatment_name == input$treatment_name_gd) %>%
+      dplyr::filter(if (input$concentration != "All Concentrations") concentration == input$concentration else TRUE)
+    
+    brushed_growth_data <- brushedPoints(df_filtered, input$plot_brush)
+    DT::datatable(brushed_growth_data,options = list(scrollX = TRUE, scrollY = "300px", paging = TRUE), rownames = FALSE, selection = "none")
   })
+  
+# mark_as_outlier for growth data qc
+  observeEvent(input$mark_as_outlier_growth_d, {
+    req(rv$updated_data, input$plot_brush, input$treatment_name_gd)
+    df_filtered <- rv$updated_data %>%
+      dplyr::filter(treatment_name == input$treatment_name_gd) %>%
+      dplyr::filter(if (input$concentration != "All Concentrations") concentration == input$concentration else TRUE)
+    
+    #extracting brushed points
+    selected_df <- brushedPoints(df_filtered, input$plot_brush)
+    req(nrow(selected_df) > 0)
+    
+    selected_ids <- selected_df$well
+    reason_input <- input$outlier_reason
+    
+    rv$updated_data <- rv$updated_data %>%
+      dplyr::mutate(
+        outlier_manual_yn = dplyr::if_else(well %in% selected_ids, "Yes", outlier_manual_yn),
+        outlier_manual_flag_reason = dplyr::if_else(
+          well %in% selected_ids,
+          dplyr::case_when(
+            reason_input == "Use Outlier Auto Flag Reason" ~ as.character(outlier_auto_flag_reason),
+            reason_input == "Other" ~ input$outlier_reason_other,
+            TRUE ~ reason_input
+          ),
+          outlier_manual_flag_reason
+        )
+      )
+  })
+  observeEvent(input$mark_as_not_outlier_growth_d, {
+    req(rv$updated_data, input$plot_brush, input$treatment_name_gd)
+    
+    df_filtered <- rv$updated_data %>%
+      dplyr::filter(treatment_name == input$treatment_name_gd) %>%
+      dplyr::filter(if (input$concentration != "All Concentrations") concentration == input$concentration else TRUE)
+    
+    selected_df <- brushedPoints(df_filtered, input$plot_brush)
+    req(nrow(selected_df) > 0)
+    
+    selected_ids <- selected_df$well
+    
+    rv$updated_data <- rv$updated_data %>%
+      dplyr::mutate(
+        outlier_manual_yn = dplyr::if_else(well %in% selected_ids, "No", outlier_manual_yn),
+        outlier_manual_flag_reason = dplyr::if_else(
+          well %in% selected_ids, NA_character_, outlier_manual_flag_reason
+        )
+      )
+  })
+  
   
   # Export Growth Data (QC)
   output$export_growth_data_analsyis <- downloadHandler(
@@ -851,7 +1002,7 @@ server <- function(input, output, session) {
     contentType = "application/zip"
   )
   
-  growth_data <- reactiveVal(NULL)
+  growth_data_analysis <- reactiveVal(NULL)
   endpoint_data <- reactiveVal(NULL)
   ctg_list <- reactiveVal(NULL)
   
@@ -861,7 +1012,7 @@ server <- function(input, output, session) {
       endpoint_data(NULL)
       ctg_list(NULL)
     } else if (input$data_type_data_analysis == "End-Point Assay Data Analysis") {
-      growth_data(NULL)
+      growth_data_analysis(NULL)
     }
   })
   
@@ -889,7 +1040,7 @@ server <- function(input, output, session) {
     #color_palette_mono to add the color column
     data <- CPDMTools::color_palette_mono(data)
     
-    growth_data(data)
+    growth_data_analysis(data)
     updateSelectInput(session, "treatment_name_growth", choices = unique(data$treatment_name))
     
     #checking concentration column
@@ -915,22 +1066,18 @@ server <- function(input, output, session) {
   })
   
   output$growth_data_analysis_plot <- renderPlot({
-    req(growth_data())
+    req(growth_data_analysis())
     req(run_growth_trigger())  #plot is rendered only after the "Run" button is clicked
-    
-    # selected_data <- growth_data()[growth_data()$treatment_name == input$treatment_name_growth, ]
-    # treatment_type <- unique(selected_data$treatment_type)
-    # 
+  
     if (input$show_controls) {
-      selected_data <- growth_data()
+      selected_data <- growth_data_analysis()
     } else {
-      selected_data <- growth_data()[growth_data()$treatment_name == input$treatment_name_growth, ]
+      selected_data <- growth_data_analysis()[growth_data_analysis()$treatment_name == input$treatment_name_growth, ]
     }
     
-    treatment_type <- unique(selected_data$treatment_type)
+    treatment_type_dataanalysis <- unique(selected_data$treatment_type)
     
-    
-    plot <- if ("Monotherapy" %in% treatment_type) {
+    plot <- if ("Monotherapy" %in% treatment_type_dataanalysis) {
       CPDMTools::growth_analysis_treat_plot(
         data_frame = selected_data,
         treatment_name = input$treatment_name_growth, 
@@ -944,7 +1091,7 @@ server <- function(input, output, session) {
         x_limits = c(input$min_x_value, input$max_x_value),
         y_limits = c(input$min_y_value, input$max_y_value)
       )
-    } else if (treatment_type %in% c("Media Control", "Negative Control", "Positive Control")){
+    } else if (treatment_type_dataanalysis %in% c("Media Control", "Negative Control", "Positive Control")){
       CPDMTools::growth_analysis_control_plot(
         data_frame = selected_data,
         treatment_name = input$treatment_name_growth,
@@ -964,13 +1111,13 @@ server <- function(input, output, session) {
   })
   
   output$growth_data_analysis_plotly <- renderPlotly({
-    req(growth_data())
+    req(growth_data_analysis())
     req(run_growth_trigger())
     
     if (input$show_controls) {
-      selected_data <- growth_data()
+      selected_data <- growth_data_analysis()
     } else {
-      selected_data <- growth_data()[growth_data()$treatment_name == input$treatment_name_growth, ]
+      selected_data <- growth_data_analysis()[growth_data_analysis()$treatment_name == input$treatment_name_growth, ]
     }
     
     treatment_type <- unique(selected_data$treatment_type)
@@ -1162,6 +1309,16 @@ server <- function(input, output, session) {
     )
     html_table <- flextable::htmltools_value(ind_tbl, ft.align = "center")
     htmltools::HTML(as.character(html_table))
+  })
+  
+  # update dataset 
+  output$final_updated_data_table <- renderDT({
+    req(rv$updated_data)
+    if (input$qc_data_type == "End-Point Assay Data" && !is.null(rv$ctg_list)) {
+      datatable(rv$ctg_list[[1]], options = list(pageLength = 10, scrollX = TRUE))
+    } else {
+      datatable(rv$updated_data, options = list(pageLength = 10, scrollX = TRUE))
+    }
   })
   
   ##################################### 

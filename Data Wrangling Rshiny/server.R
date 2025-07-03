@@ -1405,9 +1405,9 @@ server <- function(input, output, session) {
           # Generate the plot with full dataset to include controls globally
           plot <- if ("Monotherapy" %in% treatment_type) {
             CPDMTools::growth_analysis_treat_plot(
-              data_frame = all_data,  # ✅ Pass full dataset
+              data_frame = all_data, 
               treatment_name = treatment,
-              show_controls = TRUE,  # ✅ Always TRUE here
+              show_controls = TRUE,  
               display_metric = input$display_metric,
               growth_metric_name = input$growth_metric_name,
               time_units = input$time_unit_data_analysis,
@@ -1419,7 +1419,7 @@ server <- function(input, output, session) {
             )
           } else if (treatment_type %in% c("Media Control", "Negative Control", "Positive Control", "Vehicle Control")) {
             CPDMTools::growth_analysis_control_plot(
-              data_frame = all_data,  # ✅ Full dataset again
+              data_frame = all_data,  
               treatment_name = treatment,
               display_metric = input$display_metric,
               growth_metric_name = input$growth_metric_name,

@@ -1391,7 +1391,7 @@ server <- function(input, output, session) {
           )
         )
         # Use the full dataset — don't filter by selected treatment!
-        all_data <- growth_data()
+        all_data <- growth_data_analysis()
         
         # Unique treatments to export (Monotherapy + Control)
         treatments <- unique(all_data$treatment_name)
@@ -1405,9 +1405,9 @@ server <- function(input, output, session) {
           # Generate the plot with full dataset to include controls globally
           plot <- if ("Monotherapy" %in% treatment_type) {
             CPDMTools::growth_analysis_treat_plot(
-              data_frame = all_data, 
+              data_frame = all_data,  
               treatment_name = treatment,
-              show_controls = TRUE,  
+              show_controls = TRUE, 
               display_metric = input$display_metric,
               growth_metric_name = input$growth_metric_name,
               time_units = input$time_unit_data_analysis,
